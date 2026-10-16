@@ -8,7 +8,7 @@ BIN = bin/simulation_engine
 TEST_SRC = tests/test_synchronization.c src/events.c src/synchronization.c src/philosopher.c
 TEST_BIN = bin/test_synchronization
 
-all: $(BIN)
+all: $(BIN) $(TEST_BIN)
 
 $(BIN): $(SRC)
 	@mkdir -p bin

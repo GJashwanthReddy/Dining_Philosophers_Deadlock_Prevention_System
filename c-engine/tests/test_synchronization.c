@@ -27,6 +27,10 @@ static void setup_test_engine(simulation_engine_t *engine, algorithm_type_t algo
     memset(engine, 0, sizeof(simulation_engine_t));
     engine->config.num_philosophers = 5;
     engine->config.algorithm = algo;
+    engine->config.fork_preference = FORK_PREF_LEFT_FIRST;
+    for (int i = 0; i < 5; i++) {
+        engine->config.custom_philosopher_pref[i] = FORK_PREF_LEFT_FIRST;
+    }
     engine->config.think_time_min_ms = 50;
     engine->config.think_time_max_ms = 100;
     engine->config.eat_time_min_ms = 50;
@@ -48,6 +52,10 @@ static void setup_test_engine(simulation_engine_t *engine, algorithm_type_t algo
         engine->philosophers[i].max_wait_time_ms = 0;
         engine->philosophers[i].wait_events_count = 0;
         engine->philosophers[i].thread_active = false;
+        engine->philosophers[i].requested_first_fork = -1;
+        engine->philosophers[i].requested_second_fork = -1;
+        engine->philosophers[i].acquired_forks_count = 0;
+        engine->philosophers[i].rand_seed = 42 + i;
         
         engine->forks[i].id = i;
         engine->forks[i].owner_id = -1;
@@ -205,6 +213,95 @@ static void test_fair_fifo_synchronization(void) {
     TEST_ASSERT(spread <= 5, "Fair FIFO keeps meal disparity low (no starvation)");
 }
 
+/* Test 5: Right Fork First acquisition order */
+static void test_right_fork_first(void) {
+    printf("\n=== Running Test 5: Right Fork First Acquisition Order ===\n");
+    simulation_engine_t engine;
+    setup_test_engine(&engine, ALGO_NAIVE_LEFT_FIRST);
+    engine.config.fork_preference = FORK_PREF_RIGHT_FIRST;
+    
+    /* Philosopher 0 has left fork 0, right fork 1.
+       Under FORK_PREF_RIGHT_FIRST, Philosopher 0 requests fork 1 first, then fork 0. */
+    bool ok = sync_acquire_forks(&engine, 0);
+    TEST_ASSERT(ok == true, "Philosopher 0 acquired both forks under Right-First strategy");
+    TEST_ASSERT(engine.forks[0].owner_id == 0, "Fork 0 is owned by Philosopher 0");
+    TEST_ASSERT(engine.forks[1].owner_id == 0, "Fork 1 is owned by Philosopher 0");
+    TEST_ASSERT(engine.philosophers[0].acquired_forks_count == 2, "Philosopher 0 holds both forks (count == 2)");
+    
+    sync_release_forks(&engine, 0);
+    TEST_ASSERT(engine.forks[0].owner_id == -1, "Fork 0 released properly");
+    TEST_ASSERT(engine.forks[1].owner_id == -1, "Fork 1 released properly");
+    TEST_ASSERT(engine.philosophers[0].acquired_forks_count == 0, "Philosopher 0 holds 0 forks after release");
+    
+    teardown_test_engine(&engine);
+}
+
+/* Test 6: Custom Per-Philosopher Asymmetric Order (Breaks Circular Wait) */
+static void test_custom_asymmetric_progress(void) {
+    printf("\n=== Running Test 6: Custom Asymmetric Order (Odd-Even Breaks Deadlock) ===\n");
+    simulation_engine_t engine;
+    setup_test_engine(&engine, ALGO_NAIVE_LEFT_FIRST);
+    engine.config.fork_preference = FORK_PREF_CUSTOM;
+    /* Alternating: Even philosophers Left first, Odd philosophers Right first */
+    engine.config.custom_philosopher_pref[0] = FORK_PREF_LEFT_FIRST;
+    engine.config.custom_philosopher_pref[1] = FORK_PREF_RIGHT_FIRST;
+    engine.config.custom_philosopher_pref[2] = FORK_PREF_LEFT_FIRST;
+    engine.config.custom_philosopher_pref[3] = FORK_PREF_RIGHT_FIRST;
+    engine.config.custom_philosopher_pref[4] = FORK_PREF_LEFT_FIRST;
+    engine.is_running = true;
+    
+    for (int i = 0; i < 5; i++) {
+        philosopher_args_t *args = (philosopher_args_t*)malloc(sizeof(philosopher_args_t));
+        args->engine = &engine;
+        args->id = i;
+        engine.philosophers[i].thread_active = true;
+        pthread_create(&engine.philosophers[i].thread, NULL, philosopher_thread_func, args);
+    }
+    
+    /* Run for 1.5 seconds: with asymmetric ordering, no circular wait can form */
+    usleep(1500000);
+    
+    teardown_test_engine(&engine);
+    
+    int total_meals = 0;
+    for (int i = 0; i < 5; i++) {
+        total_meals += engine.philosophers[i].meals_completed;
+        printf("  Philosopher %d (custom pref: %s) completed %d meals\n",
+               i, (engine.config.custom_philosopher_pref[i] == FORK_PREF_RIGHT_FIRST) ? "Right First" : "Left First",
+               engine.philosophers[i].meals_completed);
+        TEST_ASSERT(engine.philosophers[i].meals_completed > 0, "Philosopher completed meals in asymmetric custom mode");
+    }
+    TEST_ASSERT(total_meals >= 5, "Asymmetric custom fork ordering prevented deadlock and enabled continuous progress");
+}
+
+/* Test 7: Random Fork Order Execution */
+static void test_random_fork_order(void) {
+    printf("\n=== Running Test 7: Random Fork Order Execution ===\n");
+    simulation_engine_t engine;
+    setup_test_engine(&engine, ALGO_NAIVE_LEFT_FIRST);
+    engine.config.fork_preference = FORK_PREF_RANDOM;
+    engine.is_running = true;
+    
+    for (int i = 0; i < 5; i++) {
+        philosopher_args_t *args = (philosopher_args_t*)malloc(sizeof(philosopher_args_t));
+        args->engine = &engine;
+        args->id = i;
+        engine.philosophers[i].thread_active = true;
+        pthread_create(&engine.philosophers[i].thread, NULL, philosopher_thread_func, args);
+    }
+    
+    usleep(1500000);
+    teardown_test_engine(&engine);
+    
+    int total_meals = 0;
+    for (int i = 0; i < 5; i++) {
+        total_meals += engine.philosophers[i].meals_completed;
+        printf("  Philosopher %d (Random order) completed %d meals\n", i, engine.philosophers[i].meals_completed);
+        TEST_ASSERT(engine.philosophers[i].meals_completed > 0, "Philosopher completed meals under Random fork order");
+    }
+    TEST_ASSERT(total_meals >= 5, "Random fork order execution completed meals without crash");
+}
+
 int main(void) {
     events_init();
     printf("====================================================\n");
@@ -215,6 +312,9 @@ int main(void) {
     test_resource_ordering_progress();
     test_deadlock_demonstration();
     test_fair_fifo_synchronization();
+    test_right_fork_first();
+    test_custom_asymmetric_progress();
+    test_random_fork_order();
     
     printf("\n====================================================\n");
     printf("Test Results: %d / %d assertions passed (%s)\n",

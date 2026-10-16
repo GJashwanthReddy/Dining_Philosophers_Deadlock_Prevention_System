@@ -14,12 +14,16 @@ const appState = {
     connected: false,
     engineStatus: 'STOPPED',
     algorithm: 'resource_ordering',
+    forkStrategy: 'left_first',
+    customPrefs: [0, 0, 0, 0, 0],
     philosophers: Array.from({ length: NUM_PHILOSOPHERS }, (_, i) => ({
         id: i,
         name: PHILOSOPHER_NAMES[i],
         state: 'THINKING',
         mealsCompleted: 0,
-        currentWaitMs: 0
+        currentWaitMs: 0,
+        requestedFork: -1,
+        heldForks: 0
     })),
     forks: Array.from({ length: NUM_PHILOSOPHERS }, (_, i) => ({
         id: i,
@@ -61,6 +65,8 @@ const wsStatusDot = document.getElementById('wsStatusDot');
 const wsStatusLabel = document.getElementById('wsStatusLabel');
 const engineStatusIndicator = document.getElementById('engineStatusIndicator');
 const currentAlgoValue = document.getElementById('currentAlgoValue');
+const currentForkPrefPill = document.getElementById('currentForkPrefPill');
+const currentForkPrefValue = document.getElementById('currentForkPrefValue');
 
 // Page 1 Elements
 const btnStart = document.getElementById('btnStart');
@@ -71,6 +77,17 @@ const btnReset = document.getElementById('btnReset');
 const btnDeadlockDemo = document.getElementById('btnDeadlockDemo');
 const btnResolveDeadlock = document.getElementById('btnResolveDeadlock');
 const algoOptionCards = document.querySelectorAll('.algo-option-card');
+
+// Fork Strategy Elements
+const activeForkPrefBadge = document.getElementById('activeForkPrefBadge');
+const forkPrefHintBox = document.getElementById('forkPrefHintBox');
+const forkOptionCards = document.querySelectorAll('.fork-option-card');
+const customForkDrawer = document.getElementById('customForkDrawer');
+const btnApplyForkStrategy = document.getElementById('btnApplyForkStrategy');
+const presetOddEven = document.getElementById('presetOddEven');
+const presetAllLeft = document.getElementById('presetAllLeft');
+const presetAllRight = document.getElementById('presetAllRight');
+const customPhilRows = document.querySelectorAll('.custom-phil-row');
 
 const metricTotalMeals = document.getElementById('metricTotalMeals');
 const metricAvgWait = document.getElementById('metricAvgWait');
@@ -277,6 +294,7 @@ function getForkCoordinates(id) {
 function renderSvgConnections() {
     let svgHtml = '';
 
+    // 1. Acquired fork links (solid green or red in deadlock)
     for (let f = 0; f < NUM_PHILOSOPHERS; f++) {
         const fork = appState.forks[f];
         if (fork.owner !== -1) {
@@ -294,6 +312,28 @@ function renderSvgConnections() {
         }
     }
 
+    // 2. Requested fork links (dashed amber line from philosopher to requested fork)
+    if (!appState.deadlock.detected) {
+        for (let p = 0; p < NUM_PHILOSOPHERS; p++) {
+            const phil = appState.philosophers[p];
+            if (phil.requestedFork >= 0 && phil.requestedFork < NUM_PHILOSOPHERS) {
+                const reqFork = phil.requestedFork;
+                if (appState.forks[reqFork].owner !== p) {
+                    const fCoord = getForkCoordinates(reqFork);
+                    const pCoord = getPhilCoordinates(p);
+                    svgHtml += `
+                        <line x1="${pCoord.x}" y1="${pCoord.y}" x2="${fCoord.x}" y2="${fCoord.y}"
+                              stroke="#f59e0b" stroke-width="2.5" stroke-dasharray="5,4" stroke-linecap="round"
+                              filter="drop-shadow(0 0 6px rgba(245, 158, 11, 0.6))">
+                            <animate attributeName="stroke-dashoffset" values="18;0" dur="0.9s" repeatCount="indefinite" />
+                        </line>
+                    `;
+                }
+            }
+        }
+    }
+
+    // 3. Circular wait deadlock cycle links
     if (appState.deadlock.detected) {
         for (let i = 0; i < NUM_PHILOSOPHERS; i++) {
             const nextPhil = (i + 1) % NUM_PHILOSOPHERS;
@@ -389,12 +429,13 @@ function handleIncomingEvent(event) {
 
         case 'init':
             if (event.algorithm) appState.algorithm = event.algorithm;
+            if (event.forkPreference) updateForkPrefUI(event.forkPreference, event.customPrefs);
             updateAlgoSelectionUI(appState.algorithm);
             updateEngineStatus(event.status, event.algorithm, 'Engine initialized');
             break;
 
         case 'philosopher_state':
-            updatePhilosopherState(event.philosopherId, event.state, event.mealsCompleted, event.currentWaitMs);
+            updatePhilosopherState(event.philosopherId, event.state, event.mealsCompleted, event.currentWaitMs, event.requestedFork, event.heldForks);
             break;
 
         case 'fork_state':
@@ -419,6 +460,7 @@ function applySnapshot(data, recentLogs) {
     if (!data) return;
 
     appState.algorithm = data.algorithm || appState.algorithm;
+    if (data.forkPreference) updateForkPrefUI(data.forkPreference, data.customPrefs);
     updateAlgoSelectionUI(appState.algorithm);
 
     if (data.status) {
@@ -427,7 +469,7 @@ function applySnapshot(data, recentLogs) {
 
     if (data.philosophers) {
         data.philosophers.forEach(p => {
-            updatePhilosopherState(p.id, p.state, p.mealsCompleted, p.currentWaitMs);
+            updatePhilosopherState(p.id, p.state, p.mealsCompleted, p.currentWaitMs, p.requestedFork, p.heldForks);
         });
     }
 
@@ -489,15 +531,18 @@ function updateEngineStatus(status, algo, msg) {
         deadlockBanner.style.display = 'none';
     }
 
+    refreshForksUI();
     renderSvgConnections();
 }
 
-function updatePhilosopherState(id, state, meals, currentWaitMs) {
+function updatePhilosopherState(id, state, meals, currentWaitMs, requestedFork = -1, heldForks = 0) {
     if (id < 0 || id >= NUM_PHILOSOPHERS) return;
 
     appState.philosophers[id].state = state;
     appState.philosophers[id].mealsCompleted = meals;
     appState.philosophers[id].currentWaitMs = currentWaitMs;
+    appState.philosophers[id].requestedFork = (requestedFork !== undefined) ? requestedFork : -1;
+    appState.philosophers[id].heldForks = (heldForks !== undefined) ? heldForks : 0;
 
     const node = document.getElementById(`philNode_${id}`);
     if (node) {
@@ -515,7 +560,34 @@ function updatePhilosopherState(id, state, meals, currentWaitMs) {
         card.className = `p-summary-card ${state === 'EATING' ? 'eating' : ''}`;
     }
 
+    refreshForksUI();
     renderSvgConnections();
+}
+
+function refreshForksUI() {
+    for (let i = 0; i < NUM_PHILOSOPHERS; i++) {
+        const fork = appState.forks[i];
+        const fNode = document.getElementById(`forkNode_${i}`);
+        if (!fNode) continue;
+
+        if (appState.deadlock.detected) {
+            fNode.className = 'fork-node deadlocked';
+            fNode.innerHTML = `<span class="fork-id">F${i}</span>`;
+        } else if (fork.owner !== -1) {
+            fNode.className = 'fork-node allocated';
+            fNode.innerHTML = `<span class="fork-id">P${fork.owner}</span>`;
+        } else {
+            // Check if any philosopher is actively requesting fork i
+            const requester = appState.philosophers.find(p => p.requestedFork === i && (p.state === 'WAITING' || p.state === 'HUNGRY'));
+            if (requester) {
+                fNode.className = 'fork-node requested';
+                fNode.innerHTML = `<span class="fork-id">Req</span>`;
+            } else {
+                fNode.className = 'fork-node';
+                fNode.innerHTML = `<span class="fork-id">F${i}</span>`;
+            }
+        }
+    }
 }
 
 function updateForkState(id, owner, available) {
@@ -524,18 +596,48 @@ function updateForkState(id, owner, available) {
     appState.forks[id].owner = owner;
     appState.forks[id].available = available;
 
-    const fNode = document.getElementById(`forkNode_${id}`);
-    if (fNode) {
-        if (!available) {
-            fNode.className = 'fork-node allocated';
-            fNode.innerHTML = `<span class="fork-id">P${owner}</span>`;
-        } else {
-            fNode.className = 'fork-node';
-            fNode.innerHTML = `<span class="fork-id">F${id}</span>`;
-        }
+    refreshForksUI();
+    renderSvgConnections();
+}
+
+function updateForkPrefUI(strategy, customPrefs) {
+    if (!strategy) strategy = 'left_first';
+    appState.forkStrategy = strategy;
+
+    if (Array.isArray(customPrefs) && customPrefs.length >= NUM_PHILOSOPHERS) {
+        appState.customPrefs = [...customPrefs];
     }
 
-    renderSvgConnections();
+    let stratLabel = 'Left First';
+    if (strategy === 'right_first') stratLabel = 'Right First';
+    else if (strategy === 'random') stratLabel = 'Random Order';
+    else if (strategy === 'custom') stratLabel = 'Custom Order';
+
+    if (activeForkPrefBadge) activeForkPrefBadge.textContent = stratLabel;
+    if (currentForkPrefValue) currentForkPrefValue.textContent = stratLabel;
+
+    // Update radio cards
+    forkOptionCards.forEach(card => {
+        const isMatch = (card.dataset.fork === strategy);
+        card.classList.toggle('active', isMatch);
+        const radio = card.querySelector('input[type="radio"]');
+        if (radio) radio.checked = isMatch;
+    });
+
+    // Expand custom drawer if strategy is custom
+    if (customForkDrawer) {
+        customForkDrawer.style.display = (strategy === 'custom') ? 'block' : 'none';
+    }
+
+    // Update custom per-philosopher segment buttons
+    customPhilRows.forEach((row, idx) => {
+        const prefVal = appState.customPrefs[idx] || 0;
+        const btns = row.querySelectorAll('.segment-btn');
+        btns.forEach(b => {
+            const val = parseInt(b.dataset.pref, 10);
+            b.classList.toggle('active', val === prefVal);
+        });
+    });
 }
 
 function updateMetrics(m) {
@@ -607,6 +709,10 @@ function updateAlgoSelectionUI(algoId) {
     else if (algoId === 'fair_fifo') displayTitle = 'Fair FIFO Monitor';
 
     currentAlgoValue.textContent = displayTitle;
+
+    if (forkPrefHintBox) {
+        forkPrefHintBox.style.display = (algoId === 'resource_ordering') ? 'flex' : 'none';
+    }
 }
 
 /* ========================================================================= */
@@ -922,6 +1028,76 @@ btnApplyConfig.addEventListener('click', () => {
         eatMax: Math.round(eCenter * 1.3)
     });
 });
+
+// Fork Strategy Radio Option click
+forkOptionCards.forEach(card => {
+    card.addEventListener('click', () => {
+        const strat = card.dataset.fork;
+        updateForkPrefUI(strat, appState.customPrefs);
+        if (appState.engineStatus !== 'RUNNING') {
+            sendCommand('fork_pref', {
+                forkStrategy: appState.forkStrategy,
+                customPrefs: appState.customPrefs
+            });
+        }
+    });
+});
+
+// Custom Drawer Segment buttons
+customPhilRows.forEach((row) => {
+    const philIdx = parseInt(row.dataset.philIdx, 10);
+    const btns = row.querySelectorAll('.segment-btn');
+    btns.forEach(btn => {
+        btn.addEventListener('click', () => {
+            const val = parseInt(btn.dataset.pref, 10);
+            appState.customPrefs[philIdx] = val;
+            btns.forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+        });
+    });
+});
+
+// Quick Presets
+if (presetOddEven) {
+    presetOddEven.addEventListener('click', () => {
+        appState.customPrefs = [0, 1, 0, 1, 0];
+        updateForkPrefUI('custom', appState.customPrefs);
+        recordLog('CONFIG', 'Custom Odd-Even preset applied (P0, P2, P4: Left; P1, P3: Right - breaks circular wait)', 'info');
+    });
+}
+
+if (presetAllLeft) {
+    presetAllLeft.addEventListener('click', () => {
+        appState.customPrefs = [0, 0, 0, 0, 0];
+        updateForkPrefUI('custom', appState.customPrefs);
+    });
+}
+
+if (presetAllRight) {
+    presetAllRight.addEventListener('click', () => {
+        appState.customPrefs = [1, 1, 1, 1, 1];
+        updateForkPrefUI('custom', appState.customPrefs);
+    });
+}
+
+// Apply Fork Strategy Button
+if (btnApplyForkStrategy) {
+    btnApplyForkStrategy.addEventListener('click', () => {
+        sendCommand('fork_pref', {
+            forkStrategy: appState.forkStrategy,
+            customPrefs: appState.customPrefs
+        });
+        
+        btnApplyForkStrategy.innerHTML = '<span>✓ Strategy Applied</span>';
+        btnApplyForkStrategy.classList.add('btn-success');
+        setTimeout(() => {
+            btnApplyForkStrategy.innerHTML = '<span>⚡ Apply Strategy</span>';
+            btnApplyForkStrategy.classList.remove('btn-success');
+        }, 1500);
+
+        recordLog('CONFIG', `Fork acquisition strategy applied: ${appState.forkStrategy.toUpperCase()}`, 'info');
+    });
+}
 
 /* ========================================================================= */
 /* 8. BOOTSTRAP INITIALIZATION                                               */

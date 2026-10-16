@@ -24,6 +24,10 @@ static void init_engine_defaults(simulation_engine_t *engine) {
     
     engine->config.num_philosophers = DEFAULT_NUM_PHILOSOPHERS;
     engine->config.algorithm = ALGO_RESOURCE_ORDERING;
+    engine->config.fork_preference = FORK_PREF_LEFT_FIRST;
+    for (int i = 0; i < MAX_PHILOSOPHERS; i++) {
+        engine->config.custom_philosopher_pref[i] = FORK_PREF_LEFT_FIRST;
+    }
     engine->config.think_time_min_ms = DEFAULT_THINK_MIN_MS;
     engine->config.think_time_max_ms = DEFAULT_THINK_MAX_MS;
     engine->config.eat_time_min_ms = DEFAULT_EAT_MIN_MS;
@@ -50,6 +54,9 @@ static void init_engine_defaults(simulation_engine_t *engine) {
         engine->philosophers[i].max_wait_time_ms = 0;
         engine->philosophers[i].wait_events_count = 0;
         engine->philosophers[i].thread_active = false;
+        engine->philosophers[i].requested_first_fork = -1;
+        engine->philosophers[i].requested_second_fork = -1;
+        engine->philosophers[i].acquired_forks_count = 0;
         
         engine->forks[i].id = i;
         engine->forks[i].owner_id = -1;
@@ -61,10 +68,15 @@ static void engine_emit_snapshot(simulation_engine_t *engine) {
     events_emit_init(engine);
     int n = engine->config.num_philosophers;
     for (int i = 0; i < n; i++) {
+        int req_fork = (engine->philosophers[i].requested_second_fork >= 0) ?
+                        engine->philosophers[i].requested_second_fork :
+                        engine->philosophers[i].requested_first_fork;
         events_emit_philosopher_state(i, engine->philosophers[i].state,
                                       engine->philosophers[i].meals_completed,
                                       (engine->philosophers[i].state == STATE_WAITING || engine->philosophers[i].state == STATE_HUNGRY) ?
-                                      (get_current_time_ms() - engine->philosophers[i].hungry_start_time_ms) : 0);
+                                      (get_current_time_ms() - engine->philosophers[i].hungry_start_time_ms) : 0,
+                                      req_fork,
+                                      engine->philosophers[i].acquired_forks_count);
         events_emit_fork_state(i, engine->forks[i].owner_id, engine->forks[i].is_available);
     }
     events_emit_metrics(engine);
@@ -266,6 +278,34 @@ static void process_command_line(char *line, simulation_engine_t *engine) {
         engine_start(engine, ALGO_NAIVE_LEFT_FIRST, true);
         return;
     }
+    if (strstr(line, "\"cmd\":\"fork_pref\"") || strstr(line, "\"cmd\": \"fork_pref\"")) {
+        fork_preference_t pref = FORK_PREF_LEFT_FIRST;
+        if (strstr(line, "right_first")) pref = FORK_PREF_RIGHT_FIRST;
+        else if (strstr(line, "random")) pref = FORK_PREF_RANDOM;
+        else if (strstr(line, "custom")) pref = FORK_PREF_CUSTOM;
+        else if (strstr(line, "left_first")) pref = FORK_PREF_LEFT_FIRST;
+        
+        engine->config.fork_preference = pref;
+        
+        char *custom_ptr = strstr(line, "\"custom\"");
+        if (custom_ptr) {
+            char *arr_start = strchr(custom_ptr, '[');
+            if (arr_start) {
+                int p_idx = 0;
+                char *curr = arr_start + 1;
+                while (*curr && *curr != ']' && p_idx < MAX_PHILOSOPHERS) {
+                    if (*curr == '0' || *curr == '1' || *curr == '2') {
+                        engine->config.custom_philosopher_pref[p_idx++] = (*curr == '1') ? FORK_PREF_RIGHT_FIRST :
+                                                                          (*curr == '2') ? FORK_PREF_RANDOM : FORK_PREF_LEFT_FIRST;
+                    }
+                    curr++;
+                }
+            }
+        }
+        events_emit_log("info", "Fork acquisition strategy set to: %s", fork_preference_to_string(engine->config.fork_preference));
+        events_emit_init(engine);
+        return;
+    }
     
     /* Handle plain text command format */
     char cmd[64] = {0};
@@ -299,6 +339,28 @@ static void process_command_line(char *line, simulation_engine_t *engine) {
         engine_reset(engine);
     } else if (strcasecmp(cmd, "DEMO_DEADLOCK") == 0) {
         engine_start(engine, ALGO_NAIVE_LEFT_FIRST, true);
+    } else if (strcasecmp(cmd, "FORK_PREF") == 0) {
+        if (matched >= 2) {
+            if (strcasecmp(arg1, "right_first") == 0 || strcasecmp(arg1, "right") == 0) {
+                engine->config.fork_preference = FORK_PREF_RIGHT_FIRST;
+            } else if (strcasecmp(arg1, "random") == 0) {
+                engine->config.fork_preference = FORK_PREF_RANDOM;
+            } else if (strcasecmp(arg1, "custom") == 0) {
+                engine->config.fork_preference = FORK_PREF_CUSTOM;
+                int c0 = 0, c1 = 0, c2 = 0, c3 = 0, c4 = 0;
+                if (sscanf(line, "%*s %*s %d %d %d %d %d", &c0, &c1, &c2, &c3, &c4) >= 1) {
+                    engine->config.custom_philosopher_pref[0] = (c0 == 1) ? FORK_PREF_RIGHT_FIRST : FORK_PREF_LEFT_FIRST;
+                    engine->config.custom_philosopher_pref[1] = (c1 == 1) ? FORK_PREF_RIGHT_FIRST : FORK_PREF_LEFT_FIRST;
+                    engine->config.custom_philosopher_pref[2] = (c2 == 1) ? FORK_PREF_RIGHT_FIRST : FORK_PREF_LEFT_FIRST;
+                    engine->config.custom_philosopher_pref[3] = (c3 == 1) ? FORK_PREF_RIGHT_FIRST : FORK_PREF_LEFT_FIRST;
+                    engine->config.custom_philosopher_pref[4] = (c4 == 1) ? FORK_PREF_RIGHT_FIRST : FORK_PREF_LEFT_FIRST;
+                }
+            } else {
+                engine->config.fork_preference = FORK_PREF_LEFT_FIRST;
+            }
+            events_emit_log("info", "Fork acquisition strategy set to: %s", fork_preference_to_string(engine->config.fork_preference));
+            events_emit_init(engine);
+        }
     } else if (strcasecmp(cmd, "SNAPSHOT") == 0) {
         engine_emit_snapshot(engine);
     } else if (strcasecmp(cmd, "CONFIG") == 0) {

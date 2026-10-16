@@ -128,8 +128,42 @@ async function runTests() {
             assert.ok(spread <= 4, `Fair FIFO meal spread should remain small (no starvation), got ${spread}`);
         });
 
-        // Test 7: Clean teardown
-        await it('7. RESET and Stop cleanly shuts down engine', async () => {
+        // Test 7: Fork Acquisition Strategy setting (Right Fork First and Custom)
+        await it('7. FORK_PREF commands update fork acquisition strategy and custom preferences in C engine', async () => {
+            engineManager.sendCommand('FORK_PREF right_first');
+            await sleep(400);
+            let snapshot = engineManager.getSnapshot();
+            assert.strictEqual(snapshot.data.forkPreference, 'right_first');
+
+            // Send custom preference: Odd/Even alternating
+            const customCmd = JSON.stringify({ cmd: 'fork_pref', strategy: 'custom', custom: [0, 1, 0, 1, 0] });
+            engineManager.sendCommand(customCmd);
+            await sleep(400);
+            snapshot = engineManager.getSnapshot();
+            assert.strictEqual(snapshot.data.forkPreference, 'custom');
+            assert.deepStrictEqual(snapshot.data.customPrefs, [0, 1, 0, 1, 0]);
+        });
+
+        // Test 8: Custom Asymmetric Odd-Even Order under Naive Locking prevents deadlock
+        await it('8. Asymmetric Odd-Even custom fork order runs under Naive locking without deadlock', async () => {
+            engineManager.sendCommand('RESET');
+            await sleep(300);
+            const customCmd = JSON.stringify({ cmd: 'fork_pref', strategy: 'custom', custom: [0, 1, 0, 1, 0] });
+            engineManager.sendCommand(customCmd);
+            await sleep(300);
+            engineManager.sendCommand('CONFIG 80 150 80 150');
+            await sleep(300);
+            engineManager.sendCommand('START naive_left_first');
+            await sleep(2500);
+
+            const snapshot = engineManager.getSnapshot();
+            assert.strictEqual(snapshot.data.status, 'RUNNING');
+            assert.strictEqual(snapshot.data.deadlock.detected, false);
+            assert.ok(snapshot.data.metrics.totalMeals >= 4, `Expected meals >= 4, got ${snapshot.data.metrics.totalMeals}`);
+        });
+
+        // Test 9: Clean teardown
+        await it('9. RESET and Stop cleanly shuts down engine', async () => {
             engineManager.sendCommand('STOP');
             await sleep(500);
             engineManager.stopEngine();

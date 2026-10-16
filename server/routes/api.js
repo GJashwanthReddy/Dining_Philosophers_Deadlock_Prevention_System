@@ -9,7 +9,7 @@ router.get('/status', (req, res) => {
 
 // POST /api/command
 router.post('/command', (req, res) => {
-    const { command, algorithm, thinkMin, thinkMax, eatMin, eatMax } = req.body;
+    const { command, algorithm, forkStrategy, customPrefs, thinkMin, thinkMax, eatMin, eatMax } = req.body;
 
     if (!command) {
         return res.status(400).json({ error: 'Command string or object is required' });
@@ -31,6 +31,10 @@ router.post('/command', (req, res) => {
         cmdStr = 'STOP';
     } else if (cmdUpper === 'RESET') {
         cmdStr = 'RESET';
+    } else if (cmdUpper === 'FORK_PREF') {
+        const strat = forkStrategy || 'left_first';
+        const custom = Array.isArray(customPrefs) ? customPrefs.slice(0, 5) : [0, 0, 0, 0, 0];
+        cmdStr = JSON.stringify({ cmd: 'fork_pref', strategy: strat, custom: custom });
     } else if (cmdUpper === 'CONFIG') {
         const tmin = parseInt(thinkMin, 10) || 800;
         const tmax = parseInt(thinkMax, 10) || 1600;

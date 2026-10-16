@@ -1,14 +1,16 @@
 /**
  * OCTO_OSSP Dining Philosophers Concurrency & Deadlock Prevention Dashboard
- * Pair-programming team: G Jashwanth Reddy, Mohammad Zaid Amaan, M Pramod Krishna
+ * Team Members: G Jashwanth Reddy, Mohammad Zaid Amaan, M Pramod Krishna
+ * Multi-Page SPA Navigation with Persistent Full-Duplex WebSocket Engine Connection
  */
 
 const NUM_PHILOSOPHERS = 5;
 const PHILOSOPHER_NAMES = ['Socrates (P0)', 'Plato (P1)', 'Aristotle (P2)', 'Descartes (P3)', 'Kant (P4)'];
 const PHILOSOPHER_EMOJIS = ['🧠', '📜', '🏛️', '💡', '⚖️'];
 
-// State object
+// Application State
 const appState = {
+    currentPage: 'simulation',
     connected: false,
     engineStatus: 'STOPPED',
     algorithm: 'resource_ordering',
@@ -35,8 +37,13 @@ const appState = {
         detected: false,
         cycle: []
     },
-    logFilter: 'all',
-    autoScroll: true
+    // Log management
+    logs: [],
+    maxLogs: 500,
+    logFilterCategory: 'all',
+    logFilterPhil: 'all',
+    logSearchQuery: '',
+    autoScrollLogs: true
 };
 
 // WebSocket client
@@ -44,13 +51,18 @@ let socket = null;
 let reconnectTimer = null;
 
 // DOM Elements
+const navItems = document.querySelectorAll('.nav-item');
+const pageViews = document.querySelectorAll('.page-view');
+const mobileMenuToggle = document.getElementById('mobileMenuToggle');
+const mainNav = document.getElementById('mainNav');
+
 const wsStatusBadge = document.getElementById('wsStatusBadge');
 const wsStatusDot = document.getElementById('wsStatusDot');
 const wsStatusLabel = document.getElementById('wsStatusLabel');
 const engineStatusIndicator = document.getElementById('engineStatusIndicator');
-const currentAlgoPill = document.getElementById('currentAlgoPill');
 const currentAlgoValue = document.getElementById('currentAlgoValue');
 
+// Page 1 Elements
 const btnStart = document.getElementById('btnStart');
 const btnPause = document.getElementById('btnPause');
 const btnResume = document.getElementById('btnResume');
@@ -58,33 +70,22 @@ const btnStop = document.getElementById('btnStop');
 const btnReset = document.getElementById('btnReset');
 const btnDeadlockDemo = document.getElementById('btnDeadlockDemo');
 const btnResolveDeadlock = document.getElementById('btnResolveDeadlock');
-
-const algoCards = document.querySelectorAll('.algo-card');
-const deadlockBanner = document.getElementById('deadlockBanner');
-const hubStateText = document.getElementById('hubStateText');
-
-const tableSvg = document.getElementById('tableSvg');
-const philosophersContainer = document.getElementById('philosophersContainer');
-const forksContainer = document.getElementById('forksContainer');
-const philosophersQuickGrid = document.getElementById('philosophersQuickGrid');
+const algoOptionCards = document.querySelectorAll('.algo-option-card');
 
 const metricTotalMeals = document.getElementById('metricTotalMeals');
 const metricAvgWait = document.getElementById('metricAvgWait');
 const metricMaxWait = document.getElementById('metricMaxWait');
 const metricUptime = document.getElementById('metricUptime');
-const mealsChartContainer = document.getElementById('mealsChartContainer');
-const fairnessBadge = document.getElementById('fairnessBadge');
 
-const ragStatusPill = document.getElementById('ragStatusPill');
-const statusHoldWait = document.getElementById('statusHoldWait');
-const statusCircularWait = document.getElementById('statusCircularWait');
-
-const logContainer = document.getElementById('logContainer');
-const btnClearLog = document.getElementById('btnClearLog');
-const chkAutoScroll = document.getElementById('chkAutoScroll');
-const filterBtns = document.querySelectorAll('.filter-btn');
-const tabBtns = document.querySelectorAll('.tab-btn');
-const tabPanes = document.querySelectorAll('.tab-pane');
+const deadlockBanner = document.getElementById('deadlockBanner');
+const deadlockAlertMsg = document.getElementById('deadlockAlertMsg');
+const hubStateText = document.getElementById('hubStateText');
+const tableSvg = document.getElementById('tableSvg');
+const philosophersContainer = document.getElementById('philosophersContainer');
+const forksContainer = document.getElementById('forksContainer');
+const philosophersQuickGrid = document.getElementById('philosophersQuickGrid');
+const tickerFeed = document.getElementById('tickerFeed');
+const btnViewAllLogs = document.getElementById('btnViewAllLogs');
 
 const sliderThink = document.getElementById('sliderThink');
 const sliderEat = document.getElementById('sliderEat');
@@ -92,8 +93,112 @@ const valThinkTime = document.getElementById('valThinkTime');
 const valEatTime = document.getElementById('valEatTime');
 const btnApplyConfig = document.getElementById('btnApplyConfig');
 
+// Page 2 Elements (Comparison)
+const btnCompStartResource = document.getElementById('btnCompStartResource');
+const btnCompStartFifo = document.getElementById('btnCompStartFifo');
+const btnCompStartNaive = document.getElementById('btnCompStartNaive');
+const btnResetMetrics = document.getElementById('btnResetMetrics');
+const compMealsChartContainer = document.getElementById('compMealsChartContainer');
+const compFairnessBadge = document.getElementById('compFairnessBadge');
+const compTotalMeals = document.getElementById('compTotalMeals');
+const compAvgWait = document.getElementById('compAvgWait');
+const compMaxWait = document.getElementById('compMaxWait');
+const compMealSpread = document.getElementById('compMealSpread');
+
+// Page 3 Elements (Logs)
+const logTotalCount = document.getElementById('logTotalCount');
+const logEngineStatus = document.getElementById('logEngineStatus');
+const logUptimeText = document.getElementById('logUptimeText');
+const logSearchInput = document.getElementById('logSearchInput');
+const logPhilFilter = document.getElementById('logPhilFilter');
+const logCategoryPills = document.querySelectorAll('#logCategoryPills .pill-btn');
+const chkLogAutoScroll = document.getElementById('chkLogAutoScroll');
+const btnClearFullLog = document.getElementById('btnClearFullLog');
+const btnExportLog = document.getElementById('btnExportLog');
+const fullLogContainer = document.getElementById('fullLogContainer');
+
 /* ========================================================================= */
-/* INITIALIZATION & GEOMETRY                                                 */
+/* 1. MULTI-PAGE SPA NAVIGATION & ROUTING                                    */
+/* ========================================================================= */
+
+function switchPage(pageId) {
+    if (!['simulation', 'comparison', 'logs', 'concepts'].includes(pageId)) {
+        pageId = 'simulation';
+    }
+
+    appState.currentPage = pageId;
+
+    // Update Nav bar
+    navItems.forEach(item => {
+        if (item.dataset.page === pageId) {
+            item.classList.add('active');
+        } else {
+            item.classList.remove('active');
+        }
+    });
+
+    // Update Page Views
+    pageViews.forEach(view => {
+        if (view.id === `page-${pageId}`) {
+            view.classList.add('active');
+        } else {
+            view.classList.remove('active');
+        }
+    });
+
+    // Update URL hash without reload
+    if (window.location.hash !== `#/${pageId}`) {
+        window.location.hash = `#/${pageId}`;
+    }
+
+    // Close mobile menu if open
+    if (mainNav.classList.contains('mobile-open')) {
+        mainNav.classList.remove('mobile-open');
+    }
+
+    // Specific page enter triggers
+    if (pageId === 'simulation') {
+        renderSvgConnections();
+    } else if (pageId === 'comparison') {
+        renderComparisonCharts();
+    } else if (pageId === 'logs') {
+        renderFilteredLogs();
+    }
+
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function handleHashChange() {
+    const hash = window.location.hash.replace('#/', '');
+    if (hash) {
+        switchPage(hash);
+    } else {
+        switchPage('simulation');
+    }
+}
+
+navItems.forEach(item => {
+    item.addEventListener('click', () => {
+        switchPage(item.dataset.page);
+    });
+});
+
+window.addEventListener('hashchange', handleHashChange);
+
+if (btnViewAllLogs) {
+    btnViewAllLogs.addEventListener('click', () => {
+        switchPage('logs');
+    });
+}
+
+if (mobileMenuToggle) {
+    mobileMenuToggle.addEventListener('click', () => {
+        mainNav.classList.toggle('mobile-open');
+    });
+}
+
+/* ========================================================================= */
+/* 2. GEOMETRY & DINING TABLE INITIALIZATION                                 */
 /* ========================================================================= */
 
 const SVG_SIZE = 500;
@@ -108,17 +213,15 @@ function initTableElements() {
     philosophersQuickGrid.innerHTML = '';
 
     for (let i = 0; i < NUM_PHILOSOPHERS; i++) {
-        // Angle for philosopher i: Top is -PI/2
         const anglePhil = (i * 2 * Math.PI / NUM_PHILOSOPHERS) - (Math.PI / 2);
         const px = CENTER_X + RADIUS_PHIL * Math.cos(anglePhil);
         const py = CENTER_Y + RADIUS_PHIL * Math.sin(anglePhil);
 
-        // Angle for fork i (between Phil i and Phil (i+1)%5)
         const angleFork = anglePhil + (Math.PI / NUM_PHILOSOPHERS);
         const fx = CENTER_X + RADIUS_FORK * Math.cos(angleFork);
         const fy = CENTER_Y + RADIUS_FORK * Math.sin(angleFork);
 
-        // Philosopher element
+        // Philosopher Node
         const pElem = document.createElement('div');
         pElem.className = 'philosopher-node THINKING';
         pElem.id = `philNode_${i}`;
@@ -130,7 +233,7 @@ function initTableElements() {
         `;
         philosophersContainer.appendChild(pElem);
 
-        // Fork element
+        // Fork Node
         const fElem = document.createElement('div');
         fElem.className = 'fork-node';
         fElem.id = `forkNode_${i}`;
@@ -139,20 +242,20 @@ function initTableElements() {
         fElem.innerHTML = `<span class="fork-id">F${i}</span>`;
         forksContainer.appendChild(fElem);
 
-        // Quick Grid Card
-        const miniCard = document.createElement('div');
-        miniCard.className = 'p-card-mini';
-        miniCard.id = `quickCard_${i}`;
-        miniCard.innerHTML = `
-            <div class="mini-name">P${i} (${PHILOSOPHER_NAMES[i].split(' ')[0]})</div>
-            <div class="mini-state" id="quickState_${i}">THINKING</div>
-            <div class="mini-meals" id="quickMeals_${i}">Meals: 0</div>
+        // Quick Summary Card
+        const summaryCard = document.createElement('div');
+        summaryCard.className = 'p-summary-card';
+        summaryCard.id = `summaryCard_${i}`;
+        summaryCard.innerHTML = `
+            <div class="p-summary-name">P${i} (${PHILOSOPHER_NAMES[i].split(' ')[0]})</div>
+            <div class="p-summary-state" id="summaryState_${i}">THINKING</div>
+            <div class="p-summary-meals" id="summaryMeals_${i}">Meals: 0</div>
         `;
-        philosophersQuickGrid.appendChild(miniCard);
+        philosophersQuickGrid.appendChild(summaryCard);
     }
 
     renderSvgConnections();
-    renderFairnessChart();
+    renderComparisonCharts();
 }
 
 function getPhilCoordinates(id) {
@@ -171,11 +274,9 @@ function getForkCoordinates(id) {
     };
 }
 
-/* Render SVG lines between forks and philosophers based on ownership and requests */
 function renderSvgConnections() {
     let svgHtml = '';
 
-    // Draw ownership allocation lines
     for (let f = 0; f < NUM_PHILOSOPHERS; f++) {
         const fork = appState.forks[f];
         if (fork.owner !== -1) {
@@ -193,7 +294,6 @@ function renderSvgConnections() {
         }
     }
 
-    // If deadlock occurs, draw circular wait directed arrows connecting all 5
     if (appState.deadlock.detected) {
         for (let i = 0; i < NUM_PHILOSOPHERS; i++) {
             const nextPhil = (i + 1) % NUM_PHILOSOPHERS;
@@ -213,7 +313,7 @@ function renderSvgConnections() {
 }
 
 /* ========================================================================= */
-/* WEBSOCKET CONNECTION                                                      */
+/* 3. PERSISTENT WEBSOCKET ENGINE CONNECTION                                 */
 /* ========================================================================= */
 
 function connectWebSocket() {
@@ -227,9 +327,9 @@ function connectWebSocket() {
 
     socket.onopen = () => {
         appState.connected = true;
-        wsStatusLabel.textContent = 'Connected (Live Engine)';
+        wsStatusLabel.textContent = 'Connected';
         wsStatusDot.className = 'status-dot connected';
-        addLogEntry('SYSTEM', 'WebSocket connection established with C Simulation Engine.', 'info');
+        recordLog('SYSTEM', 'WebSocket connection established with C simulation engine.', 'system');
         if (reconnectTimer) {
             clearInterval(reconnectTimer);
             reconnectTimer = null;
@@ -241,7 +341,7 @@ function connectWebSocket() {
             const data = JSON.parse(event.data);
             handleIncomingEvent(data);
         } catch (e) {
-            console.error('Error handling WebSocket message:', e);
+            console.error('Error parsing incoming WebSocket message:', e);
         }
     };
 
@@ -249,7 +349,7 @@ function connectWebSocket() {
         appState.connected = false;
         wsStatusLabel.textContent = 'Disconnected';
         wsStatusDot.className = 'status-dot disconnected';
-        addLogEntry('SYSTEM', 'WebSocket disconnected. Retrying in 2 seconds...', 'warn');
+        recordLog('SYSTEM', 'WebSocket disconnected. Retrying in 2 seconds...', 'warn');
 
         if (!reconnectTimer) {
             reconnectTimer = setInterval(connectWebSocket, 2000);
@@ -257,7 +357,7 @@ function connectWebSocket() {
     };
 
     socket.onerror = (err) => {
-        console.error('WebSocket encountered error:', err);
+        console.error('WebSocket encountered an error:', err);
     };
 }
 
@@ -265,7 +365,6 @@ function sendCommand(cmd, extra = {}) {
     if (socket && socket.readyState === WebSocket.OPEN) {
         socket.send(JSON.stringify({ cmd, ...extra }));
     } else {
-        // Fallback to REST API
         fetch('/api/command', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -275,7 +374,7 @@ function sendCommand(cmd, extra = {}) {
 }
 
 /* ========================================================================= */
-/* EVENT DISPATCHER                                                          */
+/* 4. EVENT DISPATCHING & STATE UPDATES                                      */
 /* ========================================================================= */
 
 function handleIncomingEvent(event) {
@@ -311,7 +410,7 @@ function handleIncomingEvent(event) {
             break;
 
         case 'log':
-            addLogEntry('C_ENGINE', event.message, event.level);
+            recordLog('C_ENGINE', event.message, event.level || 'info');
             break;
     }
 }
@@ -323,7 +422,7 @@ function applySnapshot(data, recentLogs) {
     updateAlgoSelectionUI(appState.algorithm);
 
     if (data.status) {
-        updateEngineStatus(data.status, appState.algorithm, 'Loaded current state snapshot');
+        updateEngineStatus(data.status, appState.algorithm, 'Loaded engine snapshot');
     }
 
     if (data.philosophers) {
@@ -347,26 +446,23 @@ function applySnapshot(data, recentLogs) {
     }
 
     if (recentLogs && recentLogs.length > 0) {
-        recentLogs.forEach(l => addLogEntry('C_ENGINE', l.message, l.level));
+        recentLogs.forEach(l => recordLog('C_ENGINE', l.message, l.level || 'info'));
     }
 }
-
-/* ========================================================================= */
-/* STATE UPDATERS                                                            */
-/* ========================================================================= */
 
 function updateEngineStatus(status, algo, msg) {
     appState.engineStatus = status;
     engineStatusIndicator.textContent = status;
-    engineStatusIndicator.className = `status-indicator ${status}`;
+    engineStatusIndicator.className = `engine-indicator ${status}`;
     hubStateText.textContent = status;
+    if (logEngineStatus) logEngineStatus.textContent = status;
 
     if (algo) {
         appState.algorithm = algo;
         updateAlgoSelectionUI(algo);
     }
 
-    // Control buttons state
+    // Button states
     if (status === 'RUNNING') {
         btnStart.disabled = true;
         btnPause.disabled = false;
@@ -391,10 +487,6 @@ function updateEngineStatus(status, algo, msg) {
     if (status !== 'DEADLOCKED') {
         appState.deadlock.detected = false;
         deadlockBanner.style.display = 'none';
-        statusCircularWait.className = 'chk-status broken';
-        statusCircularWait.textContent = 'BROKEN';
-        ragStatusPill.className = 'pill-mini';
-        ragStatusPill.textContent = 'DAG (Acyclic)';
     }
 
     renderSvgConnections();
@@ -412,15 +504,15 @@ function updatePhilosopherState(id, state, meals, currentWaitMs) {
         node.className = `philosopher-node ${state}`;
     }
 
-    const quickCard = document.getElementById(`quickCard_${id}`);
-    const quickState = document.getElementById(`quickState_${id}`);
-    const quickMeals = document.getElementById(`quickMeals_${id}`);
+    const card = document.getElementById(`summaryCard_${id}`);
+    const stateLabel = document.getElementById(`summaryState_${id}`);
+    const mealsLabel = document.getElementById(`summaryMeals_${id}`);
 
-    if (quickCard && quickState && quickMeals) {
-        quickState.textContent = state;
-        quickState.style.color = getStateColor(state);
-        quickMeals.textContent = `Meals: ${meals}`;
-        quickCard.className = `p-card-mini ${state === 'EATING' ? 'active-eat' : ''}`;
+    if (card && stateLabel && mealsLabel) {
+        stateLabel.textContent = state;
+        stateLabel.style.color = getStateColor(state);
+        mealsLabel.textContent = `Meals: ${meals}`;
+        card.className = `p-summary-card ${state === 'EATING' ? 'eating' : ''}`;
     }
 
     renderSvgConnections();
@@ -452,6 +544,7 @@ function updateMetrics(m) {
     appState.metrics.maximumWaitingTimeMs = m.maximumWaitingTimeMs || 0;
     appState.metrics.uptimeMs = m.uptimeMs || 0;
 
+    // Page 1 Essential metrics
     metricTotalMeals.textContent = appState.metrics.totalMeals;
     metricAvgWait.innerHTML = `${appState.metrics.averageWaitingTimeMs.toFixed(1)} <small>ms</small>`;
     metricMaxWait.innerHTML = `${appState.metrics.maximumWaitingTimeMs} <small>ms</small>`;
@@ -461,10 +554,11 @@ function updateMetrics(m) {
     const mins = String(Math.floor(totalSecs / 60)).padStart(2, '0');
     const secs = String(totalSecs % 60).padStart(2, '0');
     metricUptime.textContent = `${mins}:${secs}`;
+    if (logUptimeText) logUptimeText.textContent = `${mins}:${secs}`;
 
     if (m.mealsPerPhilosopher) {
         appState.metrics.mealsPerPhilosopher = m.mealsPerPhilosopher;
-        renderFairnessChart();
+        renderComparisonCharts();
     }
 }
 
@@ -474,17 +568,8 @@ function handleDeadlockDetected(event) {
     updateEngineStatus('DEADLOCKED', 'naive_left_first', event.description);
 
     deadlockBanner.style.display = 'flex';
-    document.getElementById('deadlockAlertMsg').textContent = event.description ||
+    deadlockAlertMsg.textContent = event.description ||
         'Circular Wait Formed: All 5 philosophers hold left fork and wait on right fork!';
-
-    statusHoldWait.className = 'chk-status cycle';
-    statusHoldWait.textContent = 'ALL HOLDING';
-
-    statusCircularWait.className = 'chk-status cycle';
-    statusCircularWait.textContent = 'CYCLE FORMED';
-
-    ragStatusPill.className = 'pill-mini danger';
-    ragStatusPill.textContent = 'CYCLE DETECTED';
 
     for (let i = 0; i < NUM_PHILOSOPHERS; i++) {
         const node = document.getElementById(`philNode_${i}`);
@@ -494,6 +579,7 @@ function handleDeadlockDetected(event) {
     }
 
     renderSvgConnections();
+    recordLog('DEADLOCK', event.description || 'Deadlock confirmed: Circular wait established.', 'error');
 }
 
 function getStateColor(state) {
@@ -507,41 +593,8 @@ function getStateColor(state) {
     }
 }
 
-function renderFairnessChart() {
-    const meals = appState.metrics.mealsPerPhilosopher || [0, 0, 0, 0, 0];
-    const maxMeals = Math.max(...meals, 1);
-    const minMeals = Math.min(...meals);
-    const spread = maxMeals - minMeals;
-
-    let chartHtml = '';
-    for (let i = 0; i < NUM_PHILOSOPHERS; i++) {
-        const pct = Math.round((meals[i] / maxMeals) * 100);
-        chartHtml += `
-            <div class="chart-bar-row">
-                <span class="chart-bar-label">P${i}</span>
-                <div class="chart-bar-track">
-                    <div class="chart-bar-fill" style="width: ${pct}%;"></div>
-                </div>
-                <span class="chart-bar-val">${meals[i]}</span>
-            </div>
-        `;
-    }
-    mealsChartContainer.innerHTML = chartHtml;
-
-    if (spread <= 2) {
-        fairnessBadge.textContent = 'Fairness: Excellent';
-        fairnessBadge.style.color = '#34d399';
-    } else if (spread <= 5) {
-        fairnessBadge.textContent = 'Fairness: Good';
-        fairnessBadge.style.color = '#38bdf8';
-    } else {
-        fairnessBadge.textContent = 'Fairness: Imbalanced';
-        fairnessBadge.style.color = '#fbbf24';
-    }
-}
-
 function updateAlgoSelectionUI(algoId) {
-    algoCards.forEach(card => {
+    algoOptionCards.forEach(card => {
         if (card.dataset.algo === algoId) {
             card.classList.add('active');
         } else {
@@ -557,29 +610,241 @@ function updateAlgoSelectionUI(algoId) {
 }
 
 /* ========================================================================= */
-/* EVENT LOGGING                                                             */
+/* 5. PAGE 2: COMPARISON & FAIRNESS CHARTS                                   */
 /* ========================================================================= */
 
-function addLogEntry(source, message, level = 'info') {
-    const timeStr = new Date().toTimeString().split(' ')[0];
-    const entry = document.createElement('div');
-    entry.className = `log-entry log-${level}`;
+function renderComparisonCharts() {
+    const meals = appState.metrics.mealsPerPhilosopher || [0, 0, 0, 0, 0];
+    const maxMeals = Math.max(...meals, 1);
+    const minMeals = Math.min(...meals);
+    const spread = maxMeals - minMeals;
 
-    let tagClass = 'tag-info';
-    if (level === 'warn') tagClass = 'tag-warn';
-    else if (level === 'error') tagClass = 'tag-error';
+    // Update Comparison stat boxes
+    if (compTotalMeals) compTotalMeals.textContent = appState.metrics.totalMeals;
+    if (compAvgWait) compAvgWait.innerHTML = `${appState.metrics.averageWaitingTimeMs.toFixed(1)} <small>ms</small>`;
+    if (compMaxWait) compMaxWait.innerHTML = `${appState.metrics.maximumWaitingTimeMs} <small>ms</small>`;
+    if (compMealSpread) compMealSpread.textContent = spread;
 
-    entry.innerHTML = `
-        <span class="log-time">[${timeStr}]</span>
-        <span class="log-tag ${tagClass}">${source}</span>
-        <span class="log-text">${escapeHtml(message)}</span>
-    `;
-
-    logContainer.appendChild(entry);
-
-    if (appState.autoScroll) {
-        logContainer.scrollTop = logContainer.scrollHeight;
+    if (compFairnessBadge) {
+        if (spread <= 2) {
+            compFairnessBadge.textContent = 'Fairness: Excellent';
+            compFairnessBadge.style.color = '#34d399';
+        } else if (spread <= 5) {
+            compFairnessBadge.textContent = 'Fairness: Good';
+            compFairnessBadge.style.color = '#38bdf8';
+        } else {
+            compFairnessBadge.textContent = 'Fairness: Asymmetric';
+            compFairnessBadge.style.color = '#fbbf24';
+        }
     }
+
+    if (!compMealsChartContainer) return;
+
+    let chartHtml = '';
+    for (let i = 0; i < NUM_PHILOSOPHERS; i++) {
+        const pct = Math.round((meals[i] / maxMeals) * 100);
+        chartHtml += `
+            <div class="chart-bar-row">
+                <span class="chart-bar-label">P${i}</span>
+                <div class="chart-bar-track">
+                    <div class="chart-bar-fill" style="width: ${pct}%;"></div>
+                </div>
+                <span class="chart-bar-val">${meals[i]}</span>
+            </div>
+        `;
+    }
+    compMealsChartContainer.innerHTML = chartHtml;
+}
+
+// Comparison page control triggers
+if (btnCompStartResource) {
+    btnCompStartResource.addEventListener('click', () => {
+        appState.algorithm = 'resource_ordering';
+        updateAlgoSelectionUI('resource_ordering');
+        sendCommand('start', { algorithm: 'resource_ordering' });
+        recordLog('BENCHMARK', 'Launched Resource Ordering comparison run.', 'info');
+    });
+}
+
+if (btnCompStartFifo) {
+    btnCompStartFifo.addEventListener('click', () => {
+        appState.algorithm = 'fair_fifo';
+        updateAlgoSelectionUI('fair_fifo');
+        sendCommand('start', { algorithm: 'fair_fifo' });
+        recordLog('BENCHMARK', 'Launched Fair FIFO Monitor comparison run.', 'info');
+    });
+}
+
+if (btnCompStartNaive) {
+    btnCompStartNaive.addEventListener('click', () => {
+        appState.algorithm = 'naive_left_first';
+        updateAlgoSelectionUI('naive_left_first');
+        sendCommand('demo_deadlock');
+        recordLog('BENCHMARK', 'Triggered Naive Left-First circular wait benchmark.', 'warn');
+    });
+}
+
+if (btnResetMetrics) {
+    btnResetMetrics.addEventListener('click', () => {
+        sendCommand('reset');
+        recordLog('BENCHMARK', 'Reset all benchmark meal counters and wait metrics.', 'info');
+    });
+}
+
+/* ========================================================================= */
+/* 6. PAGE 3: EVENT LOG & MONITORING                                         */
+/* ========================================================================= */
+
+function recordLog(category, message, level = 'info') {
+    const ts = new Date().toTimeString().split(' ')[0] + '.' + String(new Date().getMilliseconds()).padStart(3, '0');
+    const logItem = {
+        id: Date.now() + Math.random(),
+        timestamp: ts,
+        category: category.toUpperCase(),
+        message: message,
+        level: level
+    };
+
+    appState.logs.push(logItem);
+    if (appState.logs.length > appState.maxLogs) {
+        appState.logs.shift();
+    }
+
+    if (logTotalCount) logTotalCount.textContent = appState.logs.length;
+
+    // Append to compact live ticker on Page 1
+    if (tickerFeed) {
+        const itemElem = document.createElement('div');
+        itemElem.className = 'ticker-item';
+        itemElem.innerHTML = `<span class="ticker-time">[${ts.split('.')[0]}]</span> ${escapeHtml(message)}`;
+        tickerFeed.appendChild(itemElem);
+        while (tickerFeed.children.length > 4) {
+            tickerFeed.removeChild(tickerFeed.firstChild);
+        }
+    }
+
+    // Append to Page 3 if matches filters
+    if (appState.currentPage === 'logs') {
+        renderFilteredLogs();
+    }
+}
+
+function renderFilteredLogs() {
+    if (!fullLogContainer) return;
+
+    const query = appState.logSearchQuery.toLowerCase();
+    const cat = appState.logFilterCategory;
+    const phil = appState.logFilterPhil;
+
+    const filtered = appState.logs.filter(item => {
+        // Text search
+        if (query && !item.message.toLowerCase().includes(query) && !item.category.toLowerCase().includes(query)) {
+            return false;
+        }
+
+        // Category filter
+        if (cat === 'state' && !item.message.includes('THINKING') && !item.message.includes('HUNGRY') && !item.message.includes('WAITING') && !item.message.includes('EATING')) {
+            return false;
+        }
+        if (cat === 'fork' && !item.message.toLowerCase().includes('fork')) {
+            return false;
+        }
+        if (cat === 'deadlock' && item.category !== 'DEADLOCK' && !item.message.toLowerCase().includes('deadlock') && !item.message.toLowerCase().includes('circular')) {
+            return false;
+        }
+        if (cat === 'system' && item.category !== 'SYSTEM' && item.category !== 'BENCHMARK') {
+            return false;
+        }
+
+        // Philosopher ID filter
+        if (phil !== 'all') {
+            const needle = `philosopher ${phil}`;
+            const needleP = `p${phil}`;
+            if (!item.message.toLowerCase().includes(needle) && !item.message.toLowerCase().includes(needleP)) {
+                return false;
+            }
+        }
+
+        return true;
+    });
+
+    let html = '';
+    filtered.forEach(log => {
+        let tagClass = 'info';
+        if (log.level === 'warn') tagClass = 'warn';
+        else if (log.level === 'error' || log.category === 'DEADLOCK') tagClass = 'error';
+        else if (log.category === 'SYSTEM') tagClass = 'system';
+
+        html += `
+            <div class="log-entry-row">
+                <span class="log-ts">[${log.timestamp}]</span>
+                <span class="log-cat ${tagClass}">${log.category}</span>
+                <span class="log-msg">${escapeHtml(log.message)}</span>
+            </div>
+        `;
+    });
+
+    fullLogContainer.innerHTML = html;
+
+    if (appState.autoScrollLogs) {
+        fullLogContainer.scrollTop = fullLogContainer.scrollHeight;
+    }
+}
+
+// Log Search Input
+if (logSearchInput) {
+    logSearchInput.addEventListener('input', (e) => {
+        appState.logSearchQuery = e.target.value;
+        renderFilteredLogs();
+    });
+}
+
+// Log Philosopher Dropdown Filter
+if (logPhilFilter) {
+    logPhilFilter.addEventListener('change', (e) => {
+        appState.logFilterPhil = e.target.value;
+        renderFilteredLogs();
+    });
+}
+
+// Log Category Pills
+logCategoryPills.forEach(pill => {
+    pill.addEventListener('click', () => {
+        logCategoryPills.forEach(p => p.classList.remove('active'));
+        pill.classList.add('active');
+        appState.logFilterCategory = pill.dataset.filter;
+        renderFilteredLogs();
+    });
+});
+
+// Auto-Scroll Checkbox
+if (chkLogAutoScroll) {
+    chkLogAutoScroll.addEventListener('change', (e) => {
+        appState.autoScrollLogs = e.target.checked;
+    });
+}
+
+// Clear Log Button
+if (btnClearFullLog) {
+    btnClearFullLog.addEventListener('click', () => {
+        appState.logs = [];
+        if (logTotalCount) logTotalCount.textContent = '0';
+        renderFilteredLogs();
+    });
+}
+
+// Download JSON Log
+if (btnExportLog) {
+    btnExportLog.addEventListener('click', () => {
+        const jsonStr = JSON.stringify(appState.logs, null, 2);
+        const blob = new Blob([jsonStr], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `dining_philosophers_log_${Date.now()}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+    });
 }
 
 function escapeHtml(str) {
@@ -591,7 +856,7 @@ function escapeHtml(str) {
 }
 
 /* ========================================================================= */
-/* EVENT LISTENERS                                                           */
+/* 7. PAGE 1 CONTROLS EVENT LISTENERS                                        */
 /* ========================================================================= */
 
 btnStart.addEventListener('click', () => {
@@ -626,7 +891,7 @@ btnResolveDeadlock.addEventListener('click', () => {
     sendCommand('start', { algorithm: 'resource_ordering' });
 });
 
-algoCards.forEach(card => {
+algoOptionCards.forEach(card => {
     card.addEventListener('click', () => {
         const algo = card.dataset.algo;
         appState.algorithm = algo;
@@ -637,7 +902,6 @@ algoCards.forEach(card => {
     });
 });
 
-// Timing sliders
 sliderThink.addEventListener('input', () => {
     const v = parseInt(sliderThink.value, 10);
     valThinkTime.textContent = `${Math.round(v * 0.7)} - ${Math.round(v * 1.3)} ms`;
@@ -651,41 +915,20 @@ sliderEat.addEventListener('input', () => {
 btnApplyConfig.addEventListener('click', () => {
     const tCenter = parseInt(sliderThink.value, 10);
     const eCenter = parseInt(sliderEat.value, 10);
-    const tMin = Math.round(tCenter * 0.7);
-    const tMax = Math.round(tCenter * 1.3);
-    const eMin = Math.round(eCenter * 0.7);
-    const eMax = Math.round(eCenter * 1.3);
-
     sendCommand('config', {
-        thinkMin: tMin,
-        thinkMax: tMax,
-        eatMin: eMin,
-        eatMax: eMax
+        thinkMin: Math.round(tCenter * 0.7),
+        thinkMax: Math.round(tCenter * 1.3),
+        eatMin: Math.round(eCenter * 0.7),
+        eatMax: Math.round(eCenter * 1.3)
     });
 });
 
-// Tabs
-tabBtns.forEach(btn => {
-    btn.addEventListener('click', () => {
-        tabBtns.forEach(b => b.classList.remove('active'));
-        tabPanes.forEach(p => p.classList.remove('active'));
+/* ========================================================================= */
+/* 8. BOOTSTRAP INITIALIZATION                                               */
+/* ========================================================================= */
 
-        btn.classList.add('active');
-        const targetPane = document.getElementById(btn.dataset.tab);
-        if (targetPane) targetPane.classList.add('active');
-    });
-});
-
-btnClearLog.addEventListener('click', () => {
-    logContainer.innerHTML = '';
-});
-
-chkAutoScroll.addEventListener('change', (e) => {
-    appState.autoScroll = e.target.checked;
-});
-
-// Boot
 window.addEventListener('DOMContentLoaded', () => {
     initTableElements();
     connectWebSocket();
+    handleHashChange();
 });

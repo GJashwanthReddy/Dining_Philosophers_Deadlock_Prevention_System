@@ -1,0 +1,25 @@
+{
+  "name": "dining-philosophers-deadlock-prevention-system",
+  "version": "1.0.0",
+  "description": "OCTO_OSSP Dining Philosophers Concurrency, Deadlock Prevention, and Starvation Prevention Suite",
+  "main": "server/server.js",
+  "scripts": {
+    "build:c": "make -C c-engine",
+    "test:c": "make -C c-engine test",
+    "test:integration": "node tests/integration_test.js",
+    "test": "npm run test:c && npm run test:integration",
+    "server": "node server/server.js",
+    "start": "node server/server.js"
+  },
+  "keywords": [
+    "operating-systems",
+    "dining-philosophers",
+    "concurrency",
+    "posix-threads",
+    "deadlock-prevention",
+    "starvation-prevention",
+    "synchronization"
+  ],
+  "author": "OCTO_OSSP (G Jashwanth Reddy, Mohammad Zaid Amaan, M Pramod Krishna)",
+  "license": "MIT"
+}

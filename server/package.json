@@ -1,0 +1,16 @@
+{
+  "name": "dining-philosophers-server",
+  "version": "1.0.0",
+  "description": "OCTO_OSSP Dining Philosophers Synchronization and Deadlock Prevention Communication Server",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node ../tests/integration_test.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "ws": "^8.18.0"
+  },
+  "author": "OCTO_OSSP (G Jashwanth Reddy, Mohammad Zaid Amaan, M Pramod Krishna)",
+  "license": "MIT"
+}

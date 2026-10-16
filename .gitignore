@@ -1,0 +1,19 @@
+# Binaries and object files
+c-engine/bin/*
+!c-engine/bin/.gitkeep
+*.o
+*.out
+*.exe
+*.log
+
+# Node dependencies
+node_modules/
+package-lock.json
+
+# OS and Editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*~

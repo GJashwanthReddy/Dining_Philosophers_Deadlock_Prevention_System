@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dining Philosophers Deadlock Prevention System | OCTO_OSSP</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="app-container">
+        <!-- TOP HEADER -->
+        <header class="app-header">
+            <div class="header-brand">
+                <div class="brand-logo">
+                    <span class="logo-icon">⚡</span>
+                </div>
+                <div class="brand-text">
+                    <h1>Dining Philosophers <span class="highlight">Deadlock Prevention</span></h1>
+                    <p class="subtitle">Operating Systems Synchronization & Concurrency Suite &bull; <strong>Team OCTO_OSSP</strong></p>
+                </div>
+            </div>
+
+            <div class="header-status-group">
+                <div class="status-badge" id="wsStatusBadge">
+                    <span class="status-dot disconnected" id="wsStatusDot"></span>
+                    <span class="status-label" id="wsStatusLabel">Connecting...</span>
+                </div>
+                <div class="status-badge engine-badge" id="engineStatusBadge">
+                    <span class="status-indicator" id="engineStatusIndicator">STOPPED</span>
+                </div>
+                <div class="algo-pill" id="currentAlgoPill">
+                    <span class="algo-label">Algorithm:</span>
+                    <span class="algo-value" id="currentAlgoValue">Resource Ordering</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- MAIN LAYOUT -->
+        <main class="dashboard-grid">
+            <!-- LEFT PANEL: CONTROLS & ALGORITHMS -->
+            <aside class="control-panel card">
+                <div class="card-header">
+                    <h2><span class="icon">🎮</span> Simulation Controls</h2>
+                </div>
+
+                <!-- Action Buttons -->
+                <div class="controls-actions">
+                    <button id="btnStart" class="btn btn-primary">
+                        <span class="btn-icon">▶</span> Start
+                    </button>
+                    <button id="btnPause" class="btn btn-warning" disabled>
+                        <span class="btn-icon">⏸</span> Pause
+                    </button>
+                    <button id="btnResume" class="btn btn-info" style="display: none;">
+                        <span class="btn-icon">⏯</span> Resume
+                    </button>
+                    <button id="btnStop" class="btn btn-danger" disabled>
+                        <span class="btn-icon">⏹</span> Stop
+                    </button>
+                    <button id="btnReset" class="btn btn-ghost">
+                        <span class="btn-icon">↺</span> Reset
+                    </button>
+                </div>
+
+                <!-- Deadlock Demonstration Trigger -->
+                <div class="deadlock-demo-box">
+                    <div class="demo-box-header">
+                        <span class="danger-icon">⚠️</span>
+                        <div>
+                            <h4>Controlled Deadlock Demo</h4>
+                            <p>Enforce coordinated circular wait (All 5 philosophers hold left fork)</p>
+                        </div>
+                    </div>
+                    <button id="btnDeadlockDemo" class="btn btn-danger-glow">
+                        ⚡ Trigger Deadlock Demonstration
+                    </button>
+                </div>
+
+                <!-- Algorithm Selection -->
+                <div class="control-section">
+                    <label class="section-label">Select Synchronization Strategy</label>
+                    <div class="algo-selector">
+                        <button class="algo-card" data-algo="resource_ordering" id="algoResourceOrdering">
+                            <div class="algo-card-head">
+                                <span class="algo-radio"></span>
+                                <span class="algo-title">Resource Ordering</span>
+                            </div>
+                            <span class="badge badge-success">Deadlock-Free</span>
+                            <p class="algo-desc">Dijkstra's hierarchy: acquire min(L, R) fork first. Mathematically breaks circular wait.</p>
+                        </button>
+
+                        <button class="algo-card" data-algo="fair_fifo" id="algoFairFifo">
+                            <div class="algo-card-head">
+                                <span class="algo-radio"></span>
+                                <span class="algo-title">Fair FIFO Monitor</span>
+                            </div>
+                            <span class="badge badge-primary">Starvation-Free</span>
+                            <p class="algo-desc">Condition-variable monitor with arrival queue. Guarantees fair dining opportunities.</p>
+                        </button>
+
+                        <button class="algo-card" data-algo="naive_left_first" id="algoNaive">
+                            <div class="algo-card-head">
+                                <span class="algo-radio"></span>
+                                <span class="algo-title">Naive Left-First</span>
+                            </div>
+                            <span class="badge badge-danger">Deadlock-Prone</span>
+                            <p class="algo-desc">Uncoordinated acquisition: left fork first, then right. Educational baseline.</p>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Timing Sliders -->
+                <div class="control-section">
+                    <label class="section-label">Timing Parameters (POSIX Threads sleep)</label>
+                    <div class="slider-group">
+                        <div class="slider-header">
+                            <span>Thinking Time:</span>
+                            <span class="slider-val" id="valThinkTime">800 - 1600 ms</span>
+                        </div>
+                        <input type="range" id="sliderThink" min="200" max="3000" step="100" value="1200">
+                    </div>
+
+                    <div class="slider-group">
+                        <div class="slider-header">
+                            <span>Eating Time:</span>
+                            <span class="slider-val" id="valEatTime">800 - 1600 ms</span>
+                        </div>
+                        <input type="range" id="sliderEat" min="200" max="3000" step="100" value="1200">
+                    </div>
+                    <button id="btnApplyConfig" class="btn btn-sm btn-ghost">Apply Timing</button>
+                </div>
+            </aside>
+
+            <!-- CENTER: CIRCULAR DINING TABLE VISUALIZATION -->
+            <section class="visualization-panel card">
+                <div class="card-header flex-between">
+                    <h2><span class="icon">🍽️</span> Dining Table Visualization</h2>
+                    <div class="legend">
+                        <span class="legend-item"><span class="dot thinking"></span> Thinking</span>
+                        <span class="legend-item"><span class="dot hungry"></span> Hungry</span>
+                        <span class="legend-item"><span class="dot waiting"></span> Waiting</span>
+                        <span class="legend-item"><span class="dot eating"></span> Eating</span>
+                        <span class="legend-item"><span class="dot deadlocked"></span> Deadlocked</span>
+                    </div>
+                </div>
+
+                <!-- Deadlock Alert Banner -->
+                <div class="deadlock-alert-banner" id="deadlockBanner" style="display: none;">
+                    <div class="alert-icon">🚨</div>
+                    <div class="alert-body">
+                        <h3>CIRCULAR WAIT DEADLOCK DETECTED!</h3>
+                        <p id="deadlockAlertMsg">All 5 philosophers are indefinitely blocked in circular wait: P0 &rarr; F1 &rarr; P1 &rarr; F2 &rarr; P2 &rarr; F3 &rarr; P3 &rarr; F4 &rarr; P4 &rarr; F0 &rarr; P0</p>
+                    </div>
+                    <button class="btn btn-sm btn-danger" id="btnResolveDeadlock">Resolve & Switch to Resource Ordering</button>
+                </div>
+
+                <!-- Circular Canvas Container -->
+                <div class="table-container">
+                    <div class="dining-table" id="diningTable">
+                        <div class="table-surface">
+                            <div class="table-center-hub">
+                                <div class="hub-title">OCTO_OSSP</div>
+                                <div class="hub-sub" id="hubStateText">READY</div>
+                            </div>
+                        </div>
+
+                        <!-- SVG Layer for Fork Connections and Circular Wait Edges -->
+                        <svg class="table-svg" id="tableSvg" viewBox="0 0 500 500"></svg>
+
+                        <!-- Dynamic Philosophers (P0 - P4) injected by app.js -->
+                        <div id="philosophersContainer"></div>
+
+                        <!-- Dynamic Forks (F0 - F4) injected by app.js -->
+                        <div id="forksContainer"></div>
+                    </div>
+                </div>
+
+                <!-- Philosopher Quick Status Cards -->
+                <div class="philosophers-quick-grid" id="philosophersQuickGrid">
+                    <!-- Cards populated dynamically -->
+                </div>
+            </section>
+
+            <!-- RIGHT PANEL: METRICS & RESOURCE ALLOCATION GRAPH -->
+            <aside class="metrics-panel">
+                <!-- Summary Metrics Cards -->
+                <div class="metrics-grid">
+                    <div class="metric-card card">
+                        <span class="metric-icon">🍲</span>
+                        <div class="metric-info">
+                            <span class="metric-label">Total Meals Served</span>
+                            <span class="metric-number" id="metricTotalMeals">0</span>
+                        </div>
+                    </div>
+
+                    <div class="metric-card card">
+                        <span class="metric-icon">⏱️</span>
+                        <div class="metric-info">
+                            <span class="metric-label">Avg Waiting Time</span>
+                            <span class="metric-number" id="metricAvgWait">0.0 <small>ms</small></span>
+                        </div>
+                    </div>
+
+                    <div class="metric-card card">
+                        <span class="metric-icon">⏳</span>
+                        <div class="metric-info">
+                            <span class="metric-label">Max Waiting Time</span>
+                            <span class="metric-number" id="metricMaxWait">0 <small>ms</small></span>
+                        </div>
+                    </div>
+
+                    <div class="metric-card card">
+                        <span class="metric-icon">⚡</span>
+                        <div class="metric-info">
+                            <span class="metric-label">Simulation Uptime</span>
+                            <span class="metric-number" id="metricUptime">00:00</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Resource Allocation Graph (RAG) & Coffman Conditions -->
+                <div class="card rag-card">
+                    <div class="card-header">
+                        <h2><span class="icon">🕸️</span> Resource Allocation State</h2>
+                        <span class="pill-mini" id="ragStatusPill">DAG (Acyclic)</span>
+                    </div>
+
+                    <div class="coffman-checklist">
+                        <div class="coffman-item" id="coffman1">
+                            <span class="chk-icon">🔒</span>
+                            <div class="chk-text">
+                                <strong>1. Mutual Exclusion:</strong> Forks held by at most 1 thread
+                            </div>
+                            <span class="chk-status active">ACTIVE</span>
+                        </div>
+                        <div class="coffman-item" id="coffman2">
+                            <span class="chk-icon">✋</span>
+                            <div class="chk-text">
+                                <strong>2. Hold & Wait:</strong> Threads holding 1 fork wait for 2nd
+                            </div>
+                            <span class="chk-status" id="statusHoldWait">NORMAL</span>
+                        </div>
+                        <div class="coffman-item" id="coffman3">
+                            <span class="chk-icon">🛡️</span>
+                            <div class="chk-text">
+                                <strong>3. No Preemption:</strong> Forks released only by owner
+                            </div>
+                            <span class="chk-status active">ACTIVE</span>
+                        </div>
+                        <div class="coffman-item" id="coffman4">
+                            <span class="chk-icon">🔄</span>
+                            <div class="chk-text">
+                                <strong>4. Circular Wait:</strong> Closed chain of dependency
+                            </div>
+                            <span class="chk-status" id="statusCircularWait">BROKEN</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Fairness Chart: Meals Per Philosopher -->
+                <div class="card fairness-card">
+                    <div class="card-header flex-between">
+                        <h2><span class="icon">📊</span> Meal Distribution & Fairness</h2>
+                        <span class="fairness-badge" id="fairnessBadge">Fairness: High</span>
+                    </div>
+                    <div class="chart-container" id="mealsChartContainer">
+                        <!-- Populated by app.js with dynamic bars -->
+                    </div>
+                </div>
+            </aside>
+        </main>
+
+        <!-- BOTTOM TABS: EVENT LOG & OS THEORY COMPARISON -->
+        <section class="bottom-section card">
+            <div class="tabs-header">
+                <button class="tab-btn active" data-tab="tabEventLog">
+                    <span class="tab-icon">📜</span> Live C Engine Event Log
+                </button>
+                <button class="tab-btn" data-tab="tabComparison">
+                    <span class="tab-icon">⚖️</span> Algorithm Comparison Matrix
+                </button>
+                <button class="tab-btn" data-tab="tabTheory">
+                    <span class="tab-icon">📖</span> Operating Systems Concepts & Proofs
+                </button>
+            </div>
+
+            <div class="tabs-content">
+                <!-- TAB 1: EVENT LOG -->
+                <div class="tab-pane active" id="tabEventLog">
+                    <div class="log-toolbar">
+                        <div class="log-filters">
+                            <button class="filter-btn active" data-filter="all">All</button>
+                            <button class="filter-btn" data-filter="state">States</button>
+                            <button class="filter-btn" data-filter="fork">Forks</button>
+                            <button class="filter-btn" data-filter="deadlock">Deadlock</button>
+                        </div>
+                        <div class="log-actions">
+                            <label class="autoscroll-toggle">
+                                <input type="checkbox" id="chkAutoScroll" checked> Auto-scroll
+                            </label>
+                            <button class="btn btn-sm btn-ghost" id="btnClearLog">Clear Log</button>
+                        </div>
+                    </div>
+                    <div class="log-container" id="logContainer">
+                        <div class="log-entry log-info">
+                            <span class="log-time">[00:00:00]</span>
+                            <span class="log-tag tag-info">SYSTEM</span>
+                            <span class="log-text">Ready. Connecting to backend C simulation engine...</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- TAB 2: ALGORITHM COMPARISON MATRIX -->
+                <div class="tab-pane" id="tabComparison">
+                    <table class="comparison-table">
+                        <thead>
+                            <tr>
+                                <th>Synchronization Strategy</th>
+                                <th>Deadlock Risk</th>
+                                <th>Starvation Risk</th>
+                                <th>Coffman Condition Broken</th>
+                                <th>Concurrency Mechanism</th>
+                                <th>OS Primitives Used</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr class="row-danger">
+                                <td><strong>1. Naive Left-First Approach</strong></td>
+                                <td><span class="badge badge-danger">High (Deadlock-Prone)</span></td>
+                                <td>Moderate to High</td>
+                                <td>None (All 4 conditions can hold)</td>
+                                <td>Uncoordinated independent mutex locking</td>
+                                <td><code>pthread_mutex_lock()</code></td>
+                            </tr>
+                            <tr class="row-success highlight-row">
+                                <td><strong>2. Resource Ordering (Dijkstra)</strong></td>
+                                <td><span class="badge badge-success">Zero (Deadlock-Free)</span></td>
+                                <td>Low (Fair OS scheduling)</td>
+                                <td><strong>Condition 4: Circular Wait</strong> is strictly eliminated</td>
+                                <td>Global total order: <code>min(L, R)</code> before <code>max(L, R)</code></td>
+                                <td><code>pthread_mutex_lock()</code> with index hierarchy</td>
+                            </tr>
+                            <tr class="row-primary">
+                                <td><strong>3. Fair FIFO Monitor</strong></td>
+                                <td><span class="badge badge-success">Zero (Deadlock-Free)</span></td>
+                                <td><span class="badge badge-primary">Zero (Starvation-Free)</span></td>
+                                <td><strong>Condition 2 & 4:</strong> Monitor coordinates admission; FIFO arrival priority</td>
+                                <td>Monitor admission controller with FIFO request queue</td>
+                                <td><code>pthread_mutex_t</code>, <code>pthread_cond_t</code> (Monitor)</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- TAB 3: OS THEORY & PROOFS -->
+                <div class="tab-pane" id="tabTheory">
+                    <div class="theory-grid">
+                        <div class="theory-card">
+                            <h3>1. POSIX Threads & Shared Mutexes</h3>
+                            <p>Each philosopher runs as an independent concurrent POSIX thread (<code>pthread_create</code>). The five forks are protected as mutual exclusion locks (<code>pthread_mutex_t</code>). A fork cannot be held by more than one philosopher simultaneously, preventing race conditions.</p>
+                        </div>
+                        <div class="theory-card">
+                            <h3>2. The Four Coffman Conditions</h3>
+                            <p>Deadlock can occur if and only if all four conditions hold concurrently: <strong>Mutual Exclusion</strong>, <strong>Hold &amp; Wait</strong>, <strong>No Preemption</strong>, and <strong>Circular Wait</strong>. Eliminating any single condition guarantees deadlock prevention.</p>
+                        </div>
+                        <div class="theory-card">
+                            <h3>3. Resource Ordering Proof</h3>
+                            <p>By enforcing that every philosopher must request the lower-numbered fork before the higher-numbered fork, any Resource Allocation Graph is guaranteed to be a Directed Acyclic Graph (DAG). Since a cycle cannot form in a DAG, <strong>Circular Wait is impossible</strong>.</p>
+                        </div>
+                        <div class="theory-card">
+                            <h3>4. Starvation Prevention &amp; Fairness</h3>
+                            <p>Deadlock prevention does not guarantee starvation-freedom. In our Fair FIFO Monitor, hungry philosophers are queued in order of arrival. Even if non-conflicting philosophers dine, a philosopher waiting at the head of the queue is granted priority as soon as forks are released.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- FOOTER -->
+        <footer class="app-footer">
+            <p>Developed for <strong>OCTO_OSSP Hackathon</strong> &bull; Team Members: <strong>G Jashwanth Reddy</strong>, <strong>Mohammad Zaid Amaan</strong>, <strong>M Pramod Krishna</strong> &bull; Genuine POSIX C Simulation</p>
+        </footer>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

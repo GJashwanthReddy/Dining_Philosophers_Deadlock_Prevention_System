@@ -11,6 +11,10 @@
     "server": "node server/server.js",
     "start": "node server/server.js"
   },
+  "dependencies": {
+    "express": "^4.19.2",
+    "ws": "^8.17.0"
+  },
   "keywords": [
     "operating-systems",
     "dining-philosophers",

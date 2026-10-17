@@ -35,11 +35,6 @@ void* philosopher_thread_func(void *arg) {
     int id = args->id;
     free(args); /* Allocated in main thread */
     
-    engine->philosophers[id].rand_seed = (unsigned int)(time(NULL) ^ ((id + 1) * 7919));
-    engine->philosophers[id].requested_first_fork = -1;
-    engine->philosophers[id].requested_second_fork = -1;
-    engine->philosophers[id].acquired_forks_count = 0;
-    
     events_emit_log("info", "Philosopher thread %d started (left fork: %d, right fork: %d)",
                     id, engine->philosophers[id].left_fork_id, engine->philosophers[id].right_fork_id);
     
@@ -60,10 +55,7 @@ void* philosopher_thread_func(void *arg) {
         pthread_mutex_lock(&engine->state_mutex);
         engine->philosophers[id].state = STATE_THINKING;
         engine->philosophers[id].state_entered_time_ms = get_current_time_ms();
-        engine->philosophers[id].acquired_forks_count = 0;
-        engine->philosophers[id].requested_first_fork = -1;
-        engine->philosophers[id].requested_second_fork = -1;
-        events_emit_philosopher_state(id, STATE_THINKING, engine->philosophers[id].meals_completed, 0, -1, 0);
+        events_emit_philosopher_state(id, STATE_THINKING, engine->philosophers[id].meals_completed, 0);
         pthread_mutex_unlock(&engine->state_mutex);
         
         int think_duration = get_random_range(engine->config.think_time_min_ms, engine->config.think_time_max_ms);
@@ -77,7 +69,7 @@ void* philosopher_thread_func(void *arg) {
         engine->philosophers[id].state = STATE_HUNGRY;
         engine->philosophers[id].state_entered_time_ms = get_current_time_ms();
         engine->philosophers[id].hungry_start_time_ms = engine->philosophers[id].state_entered_time_ms;
-        events_emit_philosopher_state(id, STATE_HUNGRY, engine->philosophers[id].meals_completed, 0, -1, 0);
+        events_emit_philosopher_state(id, STATE_HUNGRY, engine->philosophers[id].meals_completed, 0);
         pthread_mutex_unlock(&engine->state_mutex);
         
         events_emit_log("info", "Philosopher %d is HUNGRY (requesting forks %d and %d)",
@@ -106,7 +98,7 @@ void* philosopher_thread_func(void *arg) {
         if (wait_duration > engine->philosophers[id].max_wait_time_ms) {
             engine->philosophers[id].max_wait_time_ms = wait_duration;
         }
-        events_emit_philosopher_state(id, STATE_EATING, engine->philosophers[id].meals_completed, wait_duration, -1, 2);
+        events_emit_philosopher_state(id, STATE_EATING, engine->philosophers[id].meals_completed, wait_duration);
         pthread_mutex_unlock(&engine->state_mutex);
         
         events_emit_log("info", "Philosopher %d started EATING (Meal #%d, waited %llu ms)",

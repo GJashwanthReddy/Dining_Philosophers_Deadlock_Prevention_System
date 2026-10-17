@@ -16,8 +16,6 @@ class EngineManager extends EventEmitter {
         this.state = {
             status: 'STOPPED',
             algorithm: 'resource_ordering',
-            forkPreference: 'left_first',
-            customPrefs: [0, 0, 0, 0, 0],
             numPhilosophers: 5,
             thinkMinMs: 800,
             thinkMaxMs: 1600,
@@ -29,9 +27,7 @@ class EngineManager extends EventEmitter {
                 leftForkId: i,
                 rightForkId: (i + 1) % 5,
                 mealsCompleted: 0,
-                currentWaitMs: 0,
-                requestedFork: -1,
-                heldForks: 0
+                currentWaitMs: 0
             })),
             forks: Array.from({ length: 5 }, (_, i) => ({
                 id: i,
@@ -153,8 +149,6 @@ class EngineManager extends EventEmitter {
         switch (event.type) {
             case 'init':
                 this.state.algorithm = event.algorithm || this.state.algorithm;
-                if (event.forkPreference) this.state.forkPreference = event.forkPreference;
-                if (event.customPrefs) this.state.customPrefs = event.customPrefs;
                 this.state.numPhilosophers = event.numPhilosophers || 5;
                 this.state.status = event.status || this.state.status;
                 this.state.thinkMinMs = event.thinkMinMs;
@@ -171,7 +165,7 @@ class EngineManager extends EventEmitter {
             case 'status':
                 this.state.status = event.status;
                 if (event.algorithm) this.state.algorithm = event.algorithm;
-                if (this.state.status !== 'DEADLOCKED') {
+                if (event.status !== 'DEADLOCKED') {
                     this.state.deadlock.detected = false;
                     this.state.deadlock.cycle = [];
                     this.state.deadlock.description = '';
@@ -183,8 +177,6 @@ class EngineManager extends EventEmitter {
                     this.state.philosophers[event.philosopherId].state = event.state;
                     this.state.philosophers[event.philosopherId].mealsCompleted = event.mealsCompleted;
                     this.state.philosophers[event.philosopherId].currentWaitMs = event.currentWaitMs;
-                    this.state.philosophers[event.philosopherId].requestedFork = (event.requestedFork !== undefined) ? event.requestedFork : -1;
-                    this.state.philosophers[event.philosopherId].heldForks = (event.heldForks !== undefined) ? event.heldForks : 0;
                 }
                 break;
 

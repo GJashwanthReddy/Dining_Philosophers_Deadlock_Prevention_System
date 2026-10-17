@@ -59,10 +59,6 @@
                     <span class="algo-label">Strategy:</span>
                     <span class="algo-text" id="currentAlgoValue">Resource Ordering</span>
                 </div>
-                <div class="status-pill fork-pill" id="currentForkPrefPill">
-                    <span class="algo-label">Fork Order:</span>
-                    <span class="algo-text" id="currentForkPrefValue">Left First</span>
-                </div>
                 <button class="mobile-menu-toggle" id="mobileMenuToggle" aria-label="Toggle Navigation">
                     <span></span><span></span><span></span>
                 </button>
@@ -150,120 +146,6 @@
                             </div>
                         </div>
 
-                        <!-- Fork Acquisition Strategy Control Section -->
-                        <div class="sim-section" id="forkStrategySection">
-                            <div class="section-label-row">
-                                <label class="control-label">Fork Acquisition Strategy</label>
-                                <span class="badge badge-info" id="activeForkPrefBadge">Left First</span>
-                            </div>
-
-                            <!-- Informational alert when Resource Ordering is selected -->
-                            <div class="strategy-hint-box" id="forkPrefHintBox">
-                                <span class="hint-icon">💡</span>
-                                <span class="hint-text"><strong>Resource Ordering Rule:</strong> Global hierarchy &min;(L, R) &rarr; &max;(L, R) takes precedence to ensure circular wait Coffman condition is mathematically broken.</span>
-                            </div>
-
-                            <!-- Strategy Radio Options Grid -->
-                            <div class="fork-options-grid">
-                                <label class="fork-option-card active" data-fork="left_first">
-                                    <input type="radio" name="forkRadioGroup" value="left_first" checked>
-                                    <div class="fork-card-content">
-                                        <div class="fork-card-top">
-                                            <span class="radio-dot"></span>
-                                            <span class="fork-card-title">Left Fork First</span>
-                                        </div>
-                                        <p class="fork-card-desc">Acquire physical Left fork &rarr; Right fork.</p>
-                                    </div>
-                                </label>
-
-                                <label class="fork-option-card" data-fork="right_first">
-                                    <input type="radio" name="forkRadioGroup" value="right_first">
-                                    <div class="fork-card-content">
-                                        <div class="fork-card-top">
-                                            <span class="radio-dot"></span>
-                                            <span class="fork-card-title">Right Fork First</span>
-                                        </div>
-                                        <p class="fork-card-desc">Acquire physical Right fork &rarr; Left fork.</p>
-                                    </div>
-                                </label>
-
-                                <label class="fork-option-card" data-fork="random">
-                                    <input type="radio" name="forkRadioGroup" value="random">
-                                    <div class="fork-card-content">
-                                        <div class="fork-card-top">
-                                            <span class="radio-dot"></span>
-                                            <span class="fork-card-title">Random Fork Order</span>
-                                        </div>
-                                        <p class="fork-card-desc">Randomizes first fork choice per meal attempt.</p>
-                                    </div>
-                                </label>
-
-                                <label class="fork-option-card" data-fork="custom">
-                                    <input type="radio" name="forkRadioGroup" value="custom">
-                                    <div class="fork-card-content">
-                                        <div class="fork-card-top">
-                                            <span class="radio-dot"></span>
-                                            <span class="fork-card-title">Custom Order</span>
-                                        </div>
-                                        <p class="fork-card-desc">Per-philosopher choice (e.g. Odd-Even breaks deadlock).</p>
-                                    </div>
-                                </label>
-                            </div>
-
-                            <!-- Expandable Custom Configuration Panel -->
-                            <div class="custom-fork-drawer" id="customForkDrawer" style="display: none;">
-                                <div class="drawer-header">
-                                    <span class="drawer-title">Individual Philosopher Preferences</span>
-                                    <div class="preset-chip-group">
-                                        <button type="button" class="btn-chip" id="presetOddEven" title="Alternating Odd-Even breaks circular wait!">Odd/Even</button>
-                                        <button type="button" class="btn-chip" id="presetAllLeft">All Left</button>
-                                        <button type="button" class="btn-chip" id="presetAllRight">All Right</button>
-                                    </div>
-                                </div>
-                                <div class="custom-phil-rows">
-                                    <div class="custom-phil-row" data-phil-idx="0">
-                                        <span class="phil-row-label">P0 (F0, F1)</span>
-                                        <div class="segmented-control">
-                                            <button type="button" class="segment-btn active" data-pref="0">Left First</button>
-                                            <button type="button" class="segment-btn" data-pref="1">Right First</button>
-                                        </div>
-                                    </div>
-                                    <div class="custom-phil-row" data-phil-idx="1">
-                                        <span class="phil-row-label">P1 (F1, F2)</span>
-                                        <div class="segmented-control">
-                                            <button type="button" class="segment-btn active" data-pref="0">Left First</button>
-                                            <button type="button" class="segment-btn" data-pref="1">Right First</button>
-                                        </div>
-                                    </div>
-                                    <div class="custom-phil-row" data-phil-idx="2">
-                                        <span class="phil-row-label">P2 (F2, F3)</span>
-                                        <div class="segmented-control">
-                                            <button type="button" class="segment-btn active" data-pref="0">Left First</button>
-                                            <button type="button" class="segment-btn" data-pref="1">Right First</button>
-                                        </div>
-                                    </div>
-                                    <div class="custom-phil-row" data-phil-idx="3">
-                                        <span class="phil-row-label">P3 (F3, F4)</span>
-                                        <div class="segmented-control">
-                                            <button type="button" class="segment-btn active" data-pref="0">Left First</button>
-                                            <button type="button" class="segment-btn" data-pref="1">Right First</button>
-                                        </div>
-                                    </div>
-                                    <div class="custom-phil-row" data-phil-idx="4">
-                                        <span class="phil-row-label">P4 (F4, F0)</span>
-                                        <div class="segmented-control">
-                                            <button type="button" class="segment-btn active" data-pref="0">Left First</button>
-                                            <button type="button" class="segment-btn" data-pref="1">Right First</button>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <button id="btnApplyForkStrategy" class="btn btn-sm btn-outline-cyan btn-block" style="margin-top: 10px;">
-                                <span>⚡ Apply Strategy</span>
-                            </button>
-                        </div>
-
                         <!-- Timing Sliders -->
                         <div class="sim-section">
                             <label class="control-label">Thread Sleep Timers</label>
@@ -325,8 +207,18 @@
                             <div class="alert-content">
                                 <h3>CIRCULAR WAIT DEADLOCK DETECTED!</h3>
                                 <p id="deadlockAlertMsg">All 5 philosophers are indefinitely blocked in circular wait: P0 &rarr; F1 &rarr; P1 &rarr; F2 &rarr; P2 &rarr; F3 &rarr; P3 &rarr; F4 &rarr; P4 &rarr; F0 &rarr; P0</p>
+                                <div id="deadlockCycleBreakdown" class="deadlock-cycle-chips"></div>
                             </div>
                             <button class="btn btn-sm btn-danger" id="btnResolveDeadlock">Resolve & Switch to Resource Ordering</button>
+                        </div>
+
+                        <!-- Runtime Topology Assertion Warning Banner -->
+                        <div class="topology-warning-banner" id="topologyWarningBanner" style="display: none;">
+                            <span class="warning-icon">⚠️</span>
+                            <div class="warning-content">
+                                <strong>TOPOLOGY ANOMALY DETECTED:</strong>
+                                <span id="topologyWarningMsg">Non-adjacent resource connection attempt blocked.</span>
+                            </div>
                         </div>
 
                         <!-- Spacious Visual Canvas -->
@@ -334,23 +226,17 @@
                             <div class="stage-header">
                                 <div class="stage-title">
                                     <h2>Dining Table Synchronization</h2>
-                                    <span class="stage-sub">Live POSIX mutex allocations between concurrent threads</span>
+                                    <span class="stage-sub">Live POSIX mutex allocations between circular adjacent threads & forks</span>
                                 </div>
                                 <div class="stage-legend">
-                                    <div class="legend-group">
-                                        <span class="legend-group-title">Philosophers:</span>
-                                        <span class="legend-dot-item"><span class="dot thinking"></span> Thinking</span>
-                                        <span class="legend-dot-item"><span class="dot hungry"></span> Hungry</span>
-                                        <span class="legend-dot-item"><span class="dot waiting"></span> Waiting</span>
-                                        <span class="legend-dot-item"><span class="dot eating"></span> Eating</span>
-                                    </div>
-                                    <div class="legend-group">
-                                        <span class="legend-group-title">Forks:</span>
-                                        <span class="legend-dot-item"><span class="dot fork-avail"></span> Available</span>
-                                        <span class="legend-dot-item"><span class="dot fork-req"></span> Requested</span>
-                                        <span class="legend-dot-item"><span class="dot fork-acq"></span> Acquired</span>
-                                        <span class="legend-dot-item"><span class="dot deadlocked"></span> Deadlock</span>
-                                    </div>
+                                    <span class="legend-dot-item"><span class="dot thinking"></span> Thinking</span>
+                                    <span class="legend-dot-item"><span class="dot hungry"></span> Hungry</span>
+                                    <span class="legend-dot-item"><span class="dot waiting"></span> Waiting</span>
+                                    <span class="legend-dot-item"><span class="dot eating"></span> Eating</span>
+                                    <span class="legend-dot-item"><span class="dot deadlocked"></span> Deadlocked</span>
+                                    <span class="legend-line-item"><span class="line-sample acquired"></span> Acquired</span>
+                                    <span class="legend-line-item"><span class="line-sample requested"></span> Requested</span>
+                                    <span class="legend-line-item"><span class="line-sample guide"></span> Topology</span>
                                 </div>
                             </div>
 
@@ -361,6 +247,7 @@
                                         <div class="hub-center">
                                             <div class="hub-brand">OCTO_OSSP</div>
                                             <div class="hub-status-text" id="hubStateText">READY</div>
+                                            <div class="hub-sub-text">P0-P4 &middot; F0-F4</div>
                                         </div>
                                     </div>
 
@@ -372,6 +259,9 @@
 
                                     <!-- Dynamic Forks (F0 - F4) -->
                                     <div id="forksContainer"></div>
+
+                                    <!-- Interactive Tooltip for Nodes -->
+                                    <div id="tableTooltip" class="table-tooltip" style="display: none;"></div>
                                 </div>
                             </div>
 

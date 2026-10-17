@@ -29,4 +29,8 @@ void sync_release_forks(simulation_engine_t *engine, int philosopher_id);
 bool sync_check_deadlock(simulation_engine_t *engine);
 void sync_unlock_all_for_shutdown(simulation_engine_t *engine);
 
+/* Topology validation and adjacency invariants */
+bool sync_is_fork_adjacent(int philosopher_id, int fork_id, int num_philosophers);
+bool sync_validate_topology(const simulation_engine_t *engine);
+
 #endif /* SYNCHRONIZATION_H */

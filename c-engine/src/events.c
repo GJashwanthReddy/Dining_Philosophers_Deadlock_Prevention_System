@@ -47,16 +47,6 @@ const char* algorithm_to_string(algorithm_type_t algo) {
     }
 }
 
-const char* fork_preference_to_string(fork_preference_t pref) {
-    switch (pref) {
-        case FORK_PREF_LEFT_FIRST:  return "left_first";
-        case FORK_PREF_RIGHT_FIRST: return "right_first";
-        case FORK_PREF_RANDOM:      return "random";
-        case FORK_PREF_CUSTOM:      return "custom";
-        default:                    return "left_first";
-    }
-}
-
 const char* status_to_string(engine_status_t status) {
     switch (status) {
         case STATUS_RUNNING:    return "RUNNING";
@@ -71,17 +61,11 @@ void events_emit_init(const simulation_engine_t *engine) {
     pthread_mutex_lock(&s_event_mutex);
     uint64_t now = get_current_time_ms();
     
-    printf("{\"type\":\"init\",\"timestampMs\":%llu,\"numPhilosophers\":%d,\"algorithm\":\"%s\",\"status\":\"%s\",\"forkPreference\":\"%s\",\"customPrefs\":[%d,%d,%d,%d,%d],\"thinkMinMs\":%d,\"thinkMaxMs\":%d,\"eatMinMs\":%d,\"eatMaxMs\":%d}\n",
+    printf("{\"type\":\"init\",\"timestampMs\":%llu,\"numPhilosophers\":%d,\"algorithm\":\"%s\",\"status\":\"%s\",\"thinkMinMs\":%d,\"thinkMaxMs\":%d,\"eatMinMs\":%d,\"eatMaxMs\":%d}\n",
            (unsigned long long)now,
            engine->config.num_philosophers,
            algorithm_to_string(engine->config.algorithm),
            status_to_string(engine->status),
-           fork_preference_to_string(engine->config.fork_preference),
-           engine->config.custom_philosopher_pref[0],
-           engine->config.custom_philosopher_pref[1],
-           engine->config.custom_philosopher_pref[2],
-           engine->config.custom_philosopher_pref[3],
-           engine->config.custom_philosopher_pref[4],
            engine->config.think_time_min_ms,
            engine->config.think_time_max_ms,
            engine->config.eat_time_min_ms,
@@ -102,17 +86,15 @@ void events_emit_status(engine_status_t status, algorithm_type_t algo, const cha
     pthread_mutex_unlock(&s_event_mutex);
 }
 
-void events_emit_philosopher_state(int id, philosopher_state_t state, int meals, uint64_t current_wait_ms, int requested_fork, int held_forks) {
+void events_emit_philosopher_state(int id, philosopher_state_t state, int meals, uint64_t current_wait_ms) {
     pthread_mutex_lock(&s_event_mutex);
     uint64_t now = get_current_time_ms();
-    printf("{\"type\":\"philosopher_state\",\"timestampMs\":%llu,\"philosopherId\":%d,\"state\":\"%s\",\"mealsCompleted\":%d,\"currentWaitMs\":%llu,\"requestedFork\":%d,\"heldForks\":%d}\n",
+    printf("{\"type\":\"philosopher_state\",\"timestampMs\":%llu,\"philosopherId\":%d,\"state\":\"%s\",\"mealsCompleted\":%d,\"currentWaitMs\":%llu}\n",
            (unsigned long long)now,
            id,
            state_to_string(state),
            meals,
-           (unsigned long long)current_wait_ms,
-           requested_fork,
-           held_forks);
+           (unsigned long long)current_wait_ms);
     fflush(stdout);
     pthread_mutex_unlock(&s_event_mutex);
 }

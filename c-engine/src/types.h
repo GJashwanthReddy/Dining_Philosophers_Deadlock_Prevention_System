@@ -35,14 +35,6 @@ typedef enum {
     STATUS_DEADLOCKED = 3
 } engine_status_t;
 
-/* Fork Acquisition Strategy / Preference */
-typedef enum {
-    FORK_PREF_LEFT_FIRST   = 0,
-    FORK_PREF_RIGHT_FIRST  = 1,
-    FORK_PREF_RANDOM       = 2,
-    FORK_PREF_CUSTOM       = 3
-} fork_preference_t;
-
 /* Fork Structure representing a shared resource */
 typedef struct {
     int id;
@@ -59,12 +51,6 @@ typedef struct {
     int right_fork_id;
     int meals_completed;
     
-    /* Fork acquisition tracking */
-    int requested_first_fork;   /* Currently requested first fork (-1 if none) */
-    int requested_second_fork;  /* Currently requested second fork (-1 if none) */
-    int acquired_forks_count;   /* 0, 1, or 2 */
-    unsigned int rand_seed;     /* Thread-safe random seed */
-    
     /* Metrics and timing */
     uint64_t state_entered_time_ms;
     uint64_t hungry_start_time_ms;
@@ -80,8 +66,6 @@ typedef struct {
 typedef struct {
     int num_philosophers;
     algorithm_type_t algorithm;
-    fork_preference_t fork_preference;
-    int custom_philosopher_pref[MAX_PHILOSOPHERS]; /* 0: Left-first, 1: Right-first */
     int think_time_min_ms;
     int think_time_max_ms;
     int eat_time_min_ms;

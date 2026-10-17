@@ -27,10 +27,6 @@ static void setup_test_engine(simulation_engine_t *engine, algorithm_type_t algo
     memset(engine, 0, sizeof(simulation_engine_t));
     engine->config.num_philosophers = 5;
     engine->config.algorithm = algo;
-    engine->config.fork_preference = FORK_PREF_LEFT_FIRST;
-    for (int i = 0; i < 5; i++) {
-        engine->config.custom_philosopher_pref[i] = FORK_PREF_LEFT_FIRST;
-    }
     engine->config.think_time_min_ms = 50;
     engine->config.think_time_max_ms = 100;
     engine->config.eat_time_min_ms = 50;
@@ -52,10 +48,6 @@ static void setup_test_engine(simulation_engine_t *engine, algorithm_type_t algo
         engine->philosophers[i].max_wait_time_ms = 0;
         engine->philosophers[i].wait_events_count = 0;
         engine->philosophers[i].thread_active = false;
-        engine->philosophers[i].requested_first_fork = -1;
-        engine->philosophers[i].requested_second_fork = -1;
-        engine->philosophers[i].acquired_forks_count = 0;
-        engine->philosophers[i].rand_seed = 42 + i;
         
         engine->forks[i].id = i;
         engine->forks[i].owner_id = -1;
@@ -213,93 +205,79 @@ static void test_fair_fifo_synchronization(void) {
     TEST_ASSERT(spread <= 5, "Fair FIFO keeps meal disparity low (no starvation)");
 }
 
-/* Test 5: Right Fork First acquisition order */
-static void test_right_fork_first(void) {
-    printf("\n=== Running Test 5: Right Fork First Acquisition Order ===\n");
+/* Test 5: Circular Fork Topology and Strict Adjacency Invariants */
+static void test_circular_fork_topology(void) {
+    printf("\n=== Running Test 5: Circular Fork Topology & Adjacency Invariants ===\n");
     simulation_engine_t engine;
-    setup_test_engine(&engine, ALGO_NAIVE_LEFT_FIRST);
-    engine.config.fork_preference = FORK_PREF_RIGHT_FIRST;
-    
-    /* Philosopher 0 has left fork 0, right fork 1.
-       Under FORK_PREF_RIGHT_FIRST, Philosopher 0 requests fork 1 first, then fork 0. */
-    bool ok = sync_acquire_forks(&engine, 0);
-    TEST_ASSERT(ok == true, "Philosopher 0 acquired both forks under Right-First strategy");
-    TEST_ASSERT(engine.forks[0].owner_id == 0, "Fork 0 is owned by Philosopher 0");
-    TEST_ASSERT(engine.forks[1].owner_id == 0, "Fork 1 is owned by Philosopher 0");
-    TEST_ASSERT(engine.philosophers[0].acquired_forks_count == 2, "Philosopher 0 holds both forks (count == 2)");
-    
-    sync_release_forks(&engine, 0);
-    TEST_ASSERT(engine.forks[0].owner_id == -1, "Fork 0 released properly");
-    TEST_ASSERT(engine.forks[1].owner_id == -1, "Fork 1 released properly");
-    TEST_ASSERT(engine.philosophers[0].acquired_forks_count == 0, "Philosopher 0 holds 0 forks after release");
-    
-    teardown_test_engine(&engine);
-}
+    setup_test_engine(&engine, ALGO_RESOURCE_ORDERING);
 
-/* Test 6: Custom Per-Philosopher Asymmetric Order (Breaks Circular Wait) */
-static void test_custom_asymmetric_progress(void) {
-    printf("\n=== Running Test 6: Custom Asymmetric Order (Odd-Even Breaks Deadlock) ===\n");
-    simulation_engine_t engine;
-    setup_test_engine(&engine, ALGO_NAIVE_LEFT_FIRST);
-    engine.config.fork_preference = FORK_PREF_CUSTOM;
-    /* Alternating: Even philosophers Left first, Odd philosophers Right first */
-    engine.config.custom_philosopher_pref[0] = FORK_PREF_LEFT_FIRST;
-    engine.config.custom_philosopher_pref[1] = FORK_PREF_RIGHT_FIRST;
-    engine.config.custom_philosopher_pref[2] = FORK_PREF_LEFT_FIRST;
-    engine.config.custom_philosopher_pref[3] = FORK_PREF_RIGHT_FIRST;
-    engine.config.custom_philosopher_pref[4] = FORK_PREF_LEFT_FIRST;
-    engine.is_running = true;
-    
-    for (int i = 0; i < 5; i++) {
-        philosopher_args_t *args = (philosopher_args_t*)malloc(sizeof(philosopher_args_t));
-        args->engine = &engine;
-        args->id = i;
-        engine.philosophers[i].thread_active = true;
-        pthread_create(&engine.philosophers[i].thread, NULL, philosopher_thread_func, args);
-    }
-    
-    /* Run for 1.5 seconds: with asymmetric ordering, no circular wait can form */
-    usleep(1500000);
-    
-    teardown_test_engine(&engine);
-    
-    int total_meals = 0;
-    for (int i = 0; i < 5; i++) {
-        total_meals += engine.philosophers[i].meals_completed;
-        printf("  Philosopher %d (custom pref: %s) completed %d meals\n",
-               i, (engine.config.custom_philosopher_pref[i] == FORK_PREF_RIGHT_FIRST) ? "Right First" : "Left First",
-               engine.philosophers[i].meals_completed);
-        TEST_ASSERT(engine.philosophers[i].meals_completed > 0, "Philosopher completed meals in asymmetric custom mode");
-    }
-    TEST_ASSERT(total_meals >= 5, "Asymmetric custom fork ordering prevented deadlock and enabled continuous progress");
-}
+    /* Topology Test 1: P0 adjacent forks are F0 and F1 */
+    TEST_ASSERT(engine.philosophers[0].left_fork_id == 0 && engine.philosophers[0].right_fork_id == 1,
+                "Test 1: P0 adjacent forks are left F0 and right F1");
+    TEST_ASSERT(sync_is_fork_adjacent(0, 0, 5) && sync_is_fork_adjacent(0, 1, 5),
+                "Test 1b: sync_is_fork_adjacent confirms F0 and F1 adjacent to P0");
 
-/* Test 7: Random Fork Order Execution */
-static void test_random_fork_order(void) {
-    printf("\n=== Running Test 7: Random Fork Order Execution ===\n");
-    simulation_engine_t engine;
-    setup_test_engine(&engine, ALGO_NAIVE_LEFT_FIRST);
-    engine.config.fork_preference = FORK_PREF_RANDOM;
-    engine.is_running = true;
-    
-    for (int i = 0; i < 5; i++) {
-        philosopher_args_t *args = (philosopher_args_t*)malloc(sizeof(philosopher_args_t));
-        args->engine = &engine;
-        args->id = i;
-        engine.philosophers[i].thread_active = true;
-        pthread_create(&engine.philosophers[i].thread, NULL, philosopher_thread_func, args);
-    }
-    
-    usleep(1500000);
+    /* Topology Test 2: P1 adjacent forks are F1 and F2 */
+    TEST_ASSERT(engine.philosophers[1].left_fork_id == 1 && engine.philosophers[1].right_fork_id == 2,
+                "Test 2: P1 adjacent forks are left F1 and right F2");
+    TEST_ASSERT(sync_is_fork_adjacent(1, 1, 5) && sync_is_fork_adjacent(1, 2, 5),
+                "Test 2b: sync_is_fork_adjacent confirms F1 and F2 adjacent to P1");
+
+    /* Topology Test 3: P2 adjacent forks are F2 and F3 */
+    TEST_ASSERT(engine.philosophers[2].left_fork_id == 2 && engine.philosophers[2].right_fork_id == 3,
+                "Test 3: P2 adjacent forks are left F2 and right F3");
+    TEST_ASSERT(sync_is_fork_adjacent(2, 2, 5) && sync_is_fork_adjacent(2, 3, 5),
+                "Test 3b: sync_is_fork_adjacent confirms F2 and F3 adjacent to P2");
+
+    /* Topology Test 4: P3 adjacent forks are F3 and F4 */
+    TEST_ASSERT(engine.philosophers[3].left_fork_id == 3 && engine.philosophers[3].right_fork_id == 4,
+                "Test 4: P3 adjacent forks are left F3 and right F4");
+    TEST_ASSERT(sync_is_fork_adjacent(3, 3, 5) && sync_is_fork_adjacent(3, 4, 5),
+                "Test 4b: sync_is_fork_adjacent confirms F3 and F4 adjacent to P3");
+
+    /* Topology Test 5: P4 adjacent forks are F4 and F0 */
+    TEST_ASSERT(engine.philosophers[4].left_fork_id == 4 && engine.philosophers[4].right_fork_id == 0,
+                "Test 5: P4 adjacent forks are left F4 and right F0 (circular wrap)");
+    TEST_ASSERT(sync_is_fork_adjacent(4, 4, 5) && sync_is_fork_adjacent(4, 0, 5),
+                "Test 5b: sync_is_fork_adjacent confirms F4 and F0 adjacent to P4");
+
+    /* Topology Test 6: Fork F0 is shared exclusively by P4 and P0 */
+    bool f0_excl = sync_is_fork_adjacent(4, 0, 5) && sync_is_fork_adjacent(0, 0, 5) &&
+                   !sync_is_fork_adjacent(1, 0, 5) && !sync_is_fork_adjacent(2, 0, 5) && !sync_is_fork_adjacent(3, 0, 5);
+    TEST_ASSERT(f0_excl, "Test 6: Fork F0 is shared ONLY by adjacent neighbors P4 and P0");
+
+    /* Topology Test 7: Fork F1 is shared exclusively by P0 and P1 */
+    bool f1_excl = sync_is_fork_adjacent(0, 1, 5) && sync_is_fork_adjacent(1, 1, 5) &&
+                   !sync_is_fork_adjacent(2, 1, 5) && !sync_is_fork_adjacent(3, 1, 5) && !sync_is_fork_adjacent(4, 1, 5);
+    TEST_ASSERT(f1_excl, "Test 7: Fork F1 is shared ONLY by adjacent neighbors P0 and P1");
+
+    /* Topology Test 8: Fork F2 is shared exclusively by P1 and P2 */
+    bool f2_excl = sync_is_fork_adjacent(1, 2, 5) && sync_is_fork_adjacent(2, 2, 5) &&
+                   !sync_is_fork_adjacent(0, 2, 5) && !sync_is_fork_adjacent(3, 2, 5) && !sync_is_fork_adjacent(4, 2, 5);
+    TEST_ASSERT(f2_excl, "Test 8: Fork F2 is shared ONLY by adjacent neighbors P1 and P2");
+
+    /* Topology Test 9: Fork F3 is shared exclusively by P2 and P3 */
+    bool f3_excl = sync_is_fork_adjacent(2, 3, 5) && sync_is_fork_adjacent(3, 3, 5) &&
+                   !sync_is_fork_adjacent(0, 3, 5) && !sync_is_fork_adjacent(1, 3, 5) && !sync_is_fork_adjacent(4, 3, 5);
+    TEST_ASSERT(f3_excl, "Test 9: Fork F3 is shared ONLY by adjacent neighbors P2 and P3");
+
+    /* Topology Test 10: Fork F4 is shared exclusively by P3 and P4 */
+    bool f4_excl = sync_is_fork_adjacent(3, 4, 5) && sync_is_fork_adjacent(4, 4, 5) &&
+                   !sync_is_fork_adjacent(0, 4, 5) && !sync_is_fork_adjacent(1, 4, 5) && !sync_is_fork_adjacent(2, 4, 5);
+    TEST_ASSERT(f4_excl, "Test 10: Fork F4 is shared ONLY by adjacent neighbors P3 and P4");
+
+    /* Full Engine Topology Validation Invariant */
+    TEST_ASSERT(sync_validate_topology(&engine) == true, "Engine topology validation invariant holds across all nodes");
+
+    /* Verify algorithm acquires only adjacent forks */
+    bool acquired = sync_acquire_forks(&engine, 2);
+    TEST_ASSERT(acquired == true, "Philosopher 2 acquired forks");
+    TEST_ASSERT(engine.forks[2].owner_id == 2 && engine.forks[3].owner_id == 2,
+                "Philosopher 2 owns exactly adjacent forks F2 and F3");
+    TEST_ASSERT(sync_validate_topology(&engine) == true, "Topology remains valid while forks are held");
+    sync_release_forks(&engine, 2);
+
     teardown_test_engine(&engine);
-    
-    int total_meals = 0;
-    for (int i = 0; i < 5; i++) {
-        total_meals += engine.philosophers[i].meals_completed;
-        printf("  Philosopher %d (Random order) completed %d meals\n", i, engine.philosophers[i].meals_completed);
-        TEST_ASSERT(engine.philosophers[i].meals_completed > 0, "Philosopher completed meals under Random fork order");
-    }
-    TEST_ASSERT(total_meals >= 5, "Random fork order execution completed meals without crash");
 }
 
 int main(void) {
@@ -308,13 +286,11 @@ int main(void) {
     printf("OCTO_OSSP Dining Philosophers C Synchronization Tests\n");
     printf("====================================================\n");
     
+    test_circular_fork_topology();
     test_fork_mutual_exclusion();
     test_resource_ordering_progress();
     test_deadlock_demonstration();
     test_fair_fifo_synchronization();
-    test_right_fork_first();
-    test_custom_asymmetric_progress();
-    test_random_fork_order();
     
     printf("\n====================================================\n");
     printf("Test Results: %d / %d assertions passed (%s)\n",

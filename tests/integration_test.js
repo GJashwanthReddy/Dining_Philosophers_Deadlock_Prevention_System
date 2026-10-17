@@ -38,6 +38,46 @@ async function runTests() {
             assert.strictEqual(snapshot.data.philosophers.length, 5);
         });
 
+        // Test 1b: Circular Topology and Resource Mapping Verification (Tests 1 - 10)
+        await it('1b. Circular table topology verifies P0-P4 and F0-F4 adjacency invariants', async () => {
+            const isAdjacent = (fId, pId) => (fId === pId || fId === (pId + 1) % 5);
+
+            // Test 1: P0 adjacent forks are F0 and F1
+            assert.strictEqual(isAdjacent(0, 0), true, 'P0 must be adjacent to F0');
+            assert.strictEqual(isAdjacent(1, 0), true, 'P0 must be adjacent to F1');
+
+            // Test 2: P1 adjacent forks are F1 and F2
+            assert.strictEqual(isAdjacent(1, 1), true, 'P1 must be adjacent to F1');
+            assert.strictEqual(isAdjacent(2, 1), true, 'P1 must be adjacent to F2');
+
+            // Test 3: P2 adjacent forks are F2 and F3
+            assert.strictEqual(isAdjacent(2, 2), true, 'P2 must be adjacent to F2');
+            assert.strictEqual(isAdjacent(3, 2), true, 'P2 must be adjacent to F3');
+
+            // Test 4: P3 adjacent forks are F3 and F4
+            assert.strictEqual(isAdjacent(3, 3), true, 'P3 must be adjacent to F3');
+            assert.strictEqual(isAdjacent(4, 3), true, 'P3 must be adjacent to F4');
+
+            // Test 5: P4 adjacent forks are F4 and F0
+            assert.strictEqual(isAdjacent(4, 4), true, 'P4 must be adjacent to F4');
+            assert.strictEqual(isAdjacent(0, 4), true, 'P4 must be adjacent to F0');
+
+            // Test 6: Fork F0 is shared exclusively by P4 and P0
+            assert.ok(isAdjacent(0, 4) && isAdjacent(0, 0) && !isAdjacent(0, 1) && !isAdjacent(0, 2) && !isAdjacent(0, 3), 'F0 only shared by P4 and P0');
+
+            // Test 7: Fork F1 is shared exclusively by P0 and P1
+            assert.ok(isAdjacent(1, 0) && isAdjacent(1, 1) && !isAdjacent(1, 2) && !isAdjacent(1, 3) && !isAdjacent(1, 4), 'F1 only shared by P0 and P1');
+
+            // Test 8: Fork F2 is shared exclusively by P1 and P2
+            assert.ok(isAdjacent(2, 1) && isAdjacent(2, 2) && !isAdjacent(2, 0) && !isAdjacent(2, 3) && !isAdjacent(2, 4), 'F2 only shared by P1 and P2');
+
+            // Test 9: Fork F3 is shared exclusively by P2 and P3
+            assert.ok(isAdjacent(3, 2) && isAdjacent(3, 3) && !isAdjacent(3, 0) && !isAdjacent(3, 1) && !isAdjacent(3, 4), 'F3 only shared by P2 and P3');
+
+            // Test 10: Fork F4 is shared exclusively by P3 and P4
+            assert.ok(isAdjacent(4, 3) && isAdjacent(4, 4) && !isAdjacent(4, 0) && !isAdjacent(4, 1) && !isAdjacent(4, 2), 'F4 only shared by P3 and P4');
+        });
+
         // Test 2: Start Resource Ordering simulation
         await it('2. START command with Resource Ordering runs concurrent threads and serves meals', async () => {
             engineManager.sendCommand('START resource_ordering');
@@ -47,7 +87,7 @@ async function runTests() {
             assert.strictEqual(snapshot.data.algorithm, 'resource_ordering');
             assert.ok(snapshot.data.metrics.totalMeals > 0, `Expected totalMeals > 0, got ${snapshot.data.metrics.totalMeals}`);
 
-            // Verify fork exclusivity invariant
+            // Verify fork exclusivity AND strict adjacency invariants
             const forks = snapshot.data.forks;
             const claimed = {};
             forks.forEach(f => {
@@ -55,6 +95,11 @@ async function runTests() {
                     assert.ok(f.owner >= 0 && f.owner < 5, `Invalid fork owner: ${f.owner}`);
                     assert.ok(!claimed[f.id], `Fork ${f.id} claimed multiple times!`);
                     claimed[f.id] = f.owner;
+
+                    // Adjacency check: fork f.id can ONLY be owned by p = f.id or p = (f.id + 4) % 5
+                    const validOwners = [f.id, (f.id + 4) % 5];
+                    assert.ok(validOwners.includes(f.owner),
+                        `Topology invariant violated! Fork F${f.id} owned by non-adjacent Philosopher P${f.owner}`);
                 }
             });
         });
@@ -128,42 +173,8 @@ async function runTests() {
             assert.ok(spread <= 4, `Fair FIFO meal spread should remain small (no starvation), got ${spread}`);
         });
 
-        // Test 7: Fork Acquisition Strategy setting (Right Fork First and Custom)
-        await it('7. FORK_PREF commands update fork acquisition strategy and custom preferences in C engine', async () => {
-            engineManager.sendCommand('FORK_PREF right_first');
-            await sleep(400);
-            let snapshot = engineManager.getSnapshot();
-            assert.strictEqual(snapshot.data.forkPreference, 'right_first');
-
-            // Send custom preference: Odd/Even alternating
-            const customCmd = JSON.stringify({ cmd: 'fork_pref', strategy: 'custom', custom: [0, 1, 0, 1, 0] });
-            engineManager.sendCommand(customCmd);
-            await sleep(400);
-            snapshot = engineManager.getSnapshot();
-            assert.strictEqual(snapshot.data.forkPreference, 'custom');
-            assert.deepStrictEqual(snapshot.data.customPrefs, [0, 1, 0, 1, 0]);
-        });
-
-        // Test 8: Custom Asymmetric Odd-Even Order under Naive Locking prevents deadlock
-        await it('8. Asymmetric Odd-Even custom fork order runs under Naive locking without deadlock', async () => {
-            engineManager.sendCommand('RESET');
-            await sleep(300);
-            const customCmd = JSON.stringify({ cmd: 'fork_pref', strategy: 'custom', custom: [0, 1, 0, 1, 0] });
-            engineManager.sendCommand(customCmd);
-            await sleep(300);
-            engineManager.sendCommand('CONFIG 80 150 80 150');
-            await sleep(300);
-            engineManager.sendCommand('START naive_left_first');
-            await sleep(2500);
-
-            const snapshot = engineManager.getSnapshot();
-            assert.strictEqual(snapshot.data.status, 'RUNNING');
-            assert.strictEqual(snapshot.data.deadlock.detected, false);
-            assert.ok(snapshot.data.metrics.totalMeals >= 4, `Expected meals >= 4, got ${snapshot.data.metrics.totalMeals}`);
-        });
-
-        // Test 9: Clean teardown
-        await it('9. RESET and Stop cleanly shuts down engine', async () => {
+        // Test 7: Clean teardown
+        await it('7. RESET and Stop cleanly shuts down engine', async () => {
             engineManager.sendCommand('STOP');
             await sleep(500);
             engineManager.stopEngine();

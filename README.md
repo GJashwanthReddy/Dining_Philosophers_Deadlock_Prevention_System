@@ -1,8 +1,8 @@
 # Dining Philosophers Deadlock Prevention System
 ### Concurrency, Synchronization, Deadlock Elimination, and Starvation Prevention Suite
 
-[![Build & Test](https://img.shields.io/badge/C%20Unit%20Tests-27%2F27%20Passed-brightgreen.svg)]()
-[![Integration Tests](https://img.shields.io/badge/Integration%20Tests-7%2F7%20Passed-brightgreen.svg)]()
+[![Build & Test](https://img.shields.io/badge/C%20Unit%20Tests-46%2F46%20Passed-brightgreen.svg)]()
+[![Integration Tests](https://img.shields.io/badge/Integration%20Tests-8%2F8%20Passed-brightgreen.svg)]()
 [![Platform](https://img.shields.io/badge/Platform-Ubuntu%20Linux%20%7C%20WSL2-blue.svg)]()
 [![Threads](https://img.shields.io/badge/Concurrency-POSIX%20pthreads-orange.svg)]()
 [![License](https://img.shields.io/badge/License-MIT-purple.svg)]()
